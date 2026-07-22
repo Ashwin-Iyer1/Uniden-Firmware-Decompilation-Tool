@@ -29,7 +29,7 @@ A complete, region-by-region map of the Uniden R7 combined firmware image, rever
 | 1 | **ui_nu** (DRSWMAI) | `0x000018` | 195072 | 182 | Main MCU — UI, menus, display, graphics, fonts, strings |
 | 2 | **dsp_nu** (DRSWDSP) | `0x02fa21` | 114688 | 184 | DSP MCU — RF sweep, band logic, serial console |
 | 3 | **gps_nu** (DRSWSUB) | `0x04ba2a` | 40960 | 183 | Sub/GPS MCU |
-| 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | 255 | voice / alert audio (internal format not cracked) |
+| 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | 255 | voice / alert audio — raw 8-bit signed PCM (editable, §4) |
 | 5 | **GPSD:LRDB** | `0x255a46` | ~204 KB | 210 | camera / POI database |
 | 6 | STUI / STDS / STGP / STSD | `0x288a65`+ | — | 182/184/183/255 | parallel STM32 image set (not run by the R7) |
 | — | NMGF footer | `0x4e26a4` | 12 B | plain | merge marker; file ends at NMGF+12 |
