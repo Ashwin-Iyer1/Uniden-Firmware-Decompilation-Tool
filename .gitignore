@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────────────────
+# NEVER commit Uniden firmware or anything derived from it.
+# The firmware is Uniden's copyrighted property — bring your own (see docs).
+# ─────────────────────────────────────────────────────────────────────────
+*.bin
+*.zip
+
+# Extracted / generated assets (derived from copyrighted firmware)
+decoded/
+scan_pull/
+anim/
+*.png
+*.gif
+# keep clean, hand-authored templates under examples/, ignore all other CSVs
+*.csv
+!examples/*.csv
+
+# Ghidra projects / scratch
+*.gpr
+*.rep
+*.lock
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

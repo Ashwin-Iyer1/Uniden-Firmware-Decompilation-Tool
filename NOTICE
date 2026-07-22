@@ -1,0 +1,33 @@
+Uniden R7 Firmware Toolkit
+Copyright (C) 2026 the Uniden R7 Firmware Toolkit contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See the LICENSE file for the full text.
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+────────────────────────────────────────────────────────────────────────────
+Attribution
+────────────────────────────────────────────────────────────────────────────
+This project derives from and is a combined/derivative work of:
+
+  uniden-firmware-tool  —  https://github.com/AngeloD2022/uniden-firmware-tool
+  Copyright (C) its authors (@AngeloD2022, @jevinskie), licensed AGPL-3.0.
+
+The firmware container layout and the "old" Sound / GPS-database transform
+(the 2-bit-plane transpose + subtract key) originate from that project and are
+reimplemented here in Python. AGPL-3.0 is retained for compliance.
+
+Work original to this project: recovery of the code-section subtract keys and
+ARM Cortex-M decoding; the display blitter/bitmap formats and boot-logo
+location; the LZSS .data decompressor; and the Scan-animation format and tools.
+
+────────────────────────────────────────────────────────────────────────────
+Not included / not affiliated
+────────────────────────────────────────────────────────────────────────────
+"Uniden" and "R7" are trademarks of Uniden. This project is unaffiliated with
+and unendorsed by Uniden. It contains NO Uniden firmware, code, or extracted
+assets — users supply their own firmware image. Do not redistribute Uniden's
+copyrighted firmware or anything extracted from it.

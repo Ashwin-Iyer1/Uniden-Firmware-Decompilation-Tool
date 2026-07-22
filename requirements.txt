@@ -1,0 +1,7 @@
+# Runtime dependency for the graphics/scan tools (r7_gfx.py, r7_scan.py).
+# The container/GPS/patch tools use only the Python standard library.
+Pillow>=9.0
+
+# Optional — only needed if you re-run the reverse-engineering / disassembly
+# yourself (see docs/REVERSE_ENGINEERING.md). Not required to use the tools.
+# capstone>=5.0
