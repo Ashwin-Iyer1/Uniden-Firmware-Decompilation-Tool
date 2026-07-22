@@ -768,6 +768,26 @@ All three R7 code MCUs are **Nuvoton NuMicro Cortex-M4F**, load base flash `0x0`
 
 ---
 
+## 9. Inter-MCU IPC (ui_nu ↔ gps_nu ↔ dsp_nu)  ·  confidence: high (transport) / medium (some fields)
+
+The three MCUs are separate chips linked by **UARTs carrying a binary framed protocol** (frames begin
+with a `0xd2` sync byte). Verified peripheral bases:
+
+| Link | ui_nu side | peer side | notes |
+|---|---|---|---|
+| ui_nu ↔ **gps_nu** (SUB) | `0x40074000` | `0x40070000` | menu settings out, GPS fix + matched-alert in |
+| ui_nu ↔ **dsp_nu** (DSP) | `0x40073000` | `0x40073000` | DSP also runs an ASCII-hex console/framer here (IRQ107, ring buf `0x20000040`) |
+| gps_nu ↔ **GPS chip** | — | `0x40071000` | NMEA in; `$PMTK`/`$PGKC` config out (MediaTek/Airoha-class GPS) |
+
+This is the glue that carries the user's band/segment/filter **menu settings** out to where they take
+effect and brings the **GPS fix + pre-matched camera alert** back for `ui_nu` to render. It is a
+**runtime wire protocol, not stored data** — you don't edit it; it's documented so the settings→RF and
+GPS→alert paths aren't a black box. `tools/r7_iplink.py` decodes the ui_nu↔gps_nu frames off-device
+(`selftest` / `decode-config` / `decode-fix`); the DSP ASCII-hex console is the same family as the
+serial commands in §2.1. **Editability: not-editable** (transport/logic; a code-patch at most).
+
+---
+
 ## Confidence & open questions
 
 - **High confidence:** container framing, integrity-absence, ui_nu `.data`/`.bss` split, config-struct
