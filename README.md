@@ -134,8 +134,11 @@ very welcome.
 ## Repository layout
 
 ```
-tools/     the CLIs (r7_unpack, r7_patch, r7_gfx, r7_gpsdb, r7_scan)
-docs/      detailed guides (format, setup, flashing, and one per capability)
+tools/     the CLIs — editing: r7_patch r7_gfx r7_gpsdb r7_scan r7_bands r7_sound;
+           container: r7_unpack; analysis: r7_alertsim r7_lzss r7_iplink
+docs/      guides: FORMAT, SETUP, FLASHING; per-capability (TEXT, GRAPHICS, GPS_DATABASE,
+           SCAN_ANIMATION, BAND_FILTERING, SOUND); FIRMWARE_MAP + WHAT_YOU_CAN_CHANGE;
+           REVERSE_ENGINEERING
 examples/  clean templates (e.g. a GPS-database CSV)
 ```
 

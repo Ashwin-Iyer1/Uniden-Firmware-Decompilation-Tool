@@ -8,7 +8,7 @@ the *contents* don't). For the exhaustive byte map see [FIRMWARE_MAP.md](FIRMWAR
 
 | Class | What it means | Tool | Risk |
 |---|---|---|---|
-| **data-edit** | Swap bytes in a stored table/asset/string; length-preserving; re-encode + splice. | `r7_patch.py`, `r7_gfx.py`, `r7_scan.py`, `r7_gpsdb.py` | Low |
+| **data-edit** | Swap bytes in a stored table/asset/string; length-preserving; re-encode + splice. | `r7_patch` · `r7_gfx` · `r7_scan` · `r7_gpsdb` · `r7_bands` · `r7_sound` · `r7_lzss` | Low |
 | **code-patch** | Change ARM Thumb-2 instructions or code-referenced pointer tables/immediates. | Ghidra + `r7_patch.py patch` | High |
 | **runtime-config** | A user menu setting stored in the device's EEPROM, **not** in the `.bin`. | On-device menu | None (no flashing) |
 | **not-editable** | Silicon-fixed, bootloader-gated, or an uncracked format — no safe path. | — | — |
