@@ -45,6 +45,10 @@ This project is unaffiliated with and unendorsed by Uniden.
 
 Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
 
+**Want the complete picture?** [docs/WHAT_YOU_CAN_CHANGE.md](docs/WHAT_YOU_CAN_CHANGE.md) classifies
+*everything* in the firmware as data-edit / code-patch / runtime-config / not-editable, and
+[docs/FIRMWARE_MAP.md](docs/FIRMWARE_MAP.md) is the exhaustive region-by-region byte map.
+
 ---
 
 ## Requirements
