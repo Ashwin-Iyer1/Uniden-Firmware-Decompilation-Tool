@@ -55,8 +55,13 @@ image moves. (The compressed choreography in `.data` is not modified.)
 
 - The tile RGB565 → PNG → RGB565 conversion is exact (5/6/5-bit expansion and re-quantization
   round-trip losslessly), which is why `verify` reports **0 DIFF**.
-- Changing the **motion** (the sweep pattern) rather than the **look** means editing the compressed
-  choreography table — that requires re-implementing the LZSS packer (the decompressor is
-  understood; see [FORMAT.md](FORMAT.md) §3) or hooking the renderer. Recoloring/redrawing the
-  tiles gives you a lot without touching the choreography.
+- Changing the **motion** (the sweep pattern) rather than the **look** means editing the
+  choreography table `framedata[20][8]` (per-cell tile-state 0–4, at decompressed `.data` offset
+  `0x298`), which lives in the **LZSS-compressed `.data` block1**. The compressor now exists —
+  **`tools/r7_lzss.py`** (verified: `decompress(compress(X)) == X`, and the output fits the
+  `~0x128` B of `0xFF` headroom after the stock stream). So motion editing is now possible: decompress
+  block1 (`r7_scan.py:decompress` / flash `0x2f7ac`), edit the `framedata` bytes, re-`compress` with
+  `r7_lzss`, check it fits the budget, and splice the re-packed block back into `ui_nu`. It's a
+  lower-level flow than tile editing (no turnkey command yet), but it is no longer blocked.
+  Recoloring/redrawing the tiles still gives you a lot without touching the choreography.
 - Offsets (`0x29b6e`, the `.data` layout) are for `R7_v153.150.127`.

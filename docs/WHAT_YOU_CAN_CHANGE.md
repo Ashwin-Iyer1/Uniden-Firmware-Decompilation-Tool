@@ -8,7 +8,7 @@ the *contents* don't). For the exhaustive byte map see [FIRMWARE_MAP.md](FIRMWAR
 
 | Class | What it means | Tool | Risk |
 |---|---|---|---|
-| **data-edit** | Swap bytes in a stored table/asset/string; length-preserving; re-encode + splice. | `r7_patch.py`, `r7_gfx.py`, `r7_scan.py`, `r7_gpsdb.py` | Low |
+| **data-edit** | Swap bytes in a stored table/asset/string; length-preserving; re-encode + splice. | `r7_patch` · `r7_gfx` · `r7_scan` · `r7_gpsdb` · `r7_bands` · `r7_sound` · `r7_lzss` | Low |
 | **code-patch** | Change ARM Thumb-2 instructions or code-referenced pointer tables/immediates. | Ghidra + `r7_patch.py patch` | High |
 | **runtime-config** | A user menu setting stored in the device's EEPROM, **not** in the `.bin`. | On-device menu | None (no flashing) |
 | **not-editable** | Silicon-fixed, bootloader-gated, or an uncracked format — no safe path. | — | — |
@@ -28,7 +28,8 @@ keep a stock `.bin`. See [FLASHING.md](FLASHING.md).
 - **Graphics**: boot logo, icons, signal bars, backgrounds, fonts — [GRAPHICS.md](GRAPHICS.md)
 - **Scan idle animation** tiles (the look) — [SCAN_ANIMATION.md](SCAN_ANIMATION.md)
 - **GPS / camera database**: add/remove/modify camera & POI points — [GPS_DATABASE.md](GPS_DATABASE.md)
-- **DSP band/sweep tuner codes** in the flash sweep tables (the data half of band filtering) — expert
+- **Voice / alert audio**: replace clips (8-bit PCM) — [SOUND.md](SOUND.md)
+- **DSP band frequencies** — move X/K/Ka detection windows via the coefficient table — `r7_bands.py` (expert)
 
 **RISKY — code-patches (real firmware dev; can brick if wrong, Recovery Mode is your net):**
 
@@ -40,7 +41,6 @@ keep a stock `.bin`. See [FLASHING.md](FLASHING.md).
 
 - Any current **user setting** (theme, band on/off, Ka segments, filters, quotas): change it in the
   **on-device menu** — it lives in EEPROM, not the `.bin`. Editing firmware won't move it.
-- **Voice / alert audio** internal format — not reverse-engineered.
 - **Settings defaults as a table** — there is none; defaults are code immediates (a code-patch).
 - **Silicon** (MMIO registers, memory map, MCU flashing) and the **ST\* STM32 images** (a different
   device — never flash them to an R7).
@@ -78,18 +78,18 @@ round-trips under key 182.
 > Changing a font's **box size, char range, or spacing** means patching hardcoded immediates in its
 > draw routine — that's a **code-patch**.
 
-### Scan idle animation  →  tiles are data-edit, motion is code-patch  ·  `r7_scan.py`  ·  SAFE / RISKY
+### Scan idle animation  →  tiles + motion are data-edit  ·  `r7_scan.py`, `r7_lzss.py`  ·  SAFE
 
 The "Scan" main-display animation is **data-driven**, not procedural. The **30 tiles** (11×8 RGB565 @
 `0x29b6e`, 8 themes × 5 states with tile reuse) are uncompressed → edit the *look* with `r7_scan.py`
 (0-diff verified). Full how-to: **[SCAN_ANIMATION.md](SCAN_ANIMATION.md)**.
 
-Changing the **motion** means editing `framedata[20][8]` (per-cell brightness 0–4) at SRAM
-`0x20000298` — but that lives inside the **LZSS-compressed `.data` block1** (flash `0x2f7ac`,
-[FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.4). There is `~0x128` B of `0xFF` headroom after the compressed
-stream, but **no re-compressor exists yet** (the decompressor for `FUN_0x488` is understood; the
-encoder isn't written). So re-choreographing is currently **not tooled** — data-editable in principle,
-requires writing the LZSS packer.
+Changing the **motion** means editing `framedata[20][8]` (per-cell tile-state 0–4) inside the
+**LZSS-compressed `.data` block1** (flash `0x2f7ac`, [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.4). The
+compressor now exists — **`tools/r7_lzss.py`** (verified round-trip; output fits the `~0x128` B of
+`0xFF` headroom after the stock stream). So re-choreographing is **data-edit** now: decompress block1,
+edit the framedata bytes, re-`compress`, splice `.data` back into `ui_nu`. It's a lower-level flow
+than tile editing (no single turnkey command yet), but it's no longer blocked.
 
 ### GPS / camera database  →  data-edit  ·  `r7_gpsdb.py`  ·  SAFE (lowest-risk flash)
 
@@ -97,21 +97,22 @@ Add, remove, or modify speed cameras, red-light cameras, and custom alert points
 key 210, no checksum, auto re-sorted by latitude. Full schema & workflows:
 **[GPS_DATABASE.md](GPS_DATABASE.md)** and [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §5. Field notes:
 `f0`=type (1 speed / 2 red-light), `speed`=posted limit (0 for red-light), `category`=region/unit
-(1 Canada-km/h, 2 USA-mph), `heading`=1–360 (360=any, never 0), `f2`=install sub-flag (semantic not
-fully cracked — safe to round-trip). Combined RLC+speed sites are **two** records at the same coord.
+(1 Canada-km/h, 2 USA-mph), `heading`=1–360 (360=any, never 0), `f2`=directional match mode
+(1 = one-way / ±30° of heading, 2 = two-way / ±30° of heading or its reverse — cracked from the
+`gps_nu` matcher). Combined RLC+speed sites are **two** records at the same coord.
 Flashed via the Updater's lower-risk "Download Files" path.
 
-### Band filtering (the DSP side)  →  split: data-edit + code-patch  ·  Ghidra  ·  RISKY (expert)
+### Band filtering (the DSP side)  →  frequencies data-edit; logic code-patch  ·  `r7_bands.py`  ·  RISKY (expert)
 
 Band filtering lives in `dsp_nu`. There are **two** halves:
 
-- **data-edit (tables):** the flash **sweep-schedule records** (20-byte records in 9+ groups —
-  [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2.2). You can shift a step's frequency by editing its
-  `tuner_code` (u32 @ record `+0x10`; `N = freq·77672/1000`, ~+18 MHz per +1 code), force a step off
-  (`enable_default[+2]=0` or zero its code), NOP a step (promote to the `0xffff` sentinel), or move
-  the wide-Ka bounds SKAL `0xde44` / SKAH `0xde54`. The global tuner scale `77672` @`0x4c50` is also a
-  data-edit-able u32 (rescales *all* codes). Edit the decoded image → re-encode key 184 → splice at
-  container `0x2fa21`. *No repo tool automates this yet — it's a manual decode/patch/encode.*
+- **data-edit (frequencies):** the RF detection windows are a **coefficient table** (33×16 B @
+  `0x0dd34`) with `freq_low`/`freq_high` stored **directly in kHz** — X, K, Ka each have records.
+  **`tools/r7_bands.py setfreq`** moves a band's window (re-encodes key 184, round-trip-verified),
+  and `dump` lists the table. Full guide: **[BAND_FILTERING.md](BAND_FILTERING.md)**,
+  [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2.6. *Caveat: records are shared across modes, so one edit
+  affects every mode that uses that band.* (The 20-byte sweep-schedule records @ §2.2 point into this
+  table; `band_type`/`ifconst` are hardware-coupled — don't touch them.)
 - **code-patch (logic):** the BSEL band-mux handler, the tuner/PLL programmers' math, the band-enable
   applier engines (`FUN_0x5788`/`0x5416`), adding a **new** Ka segment beyond the 9 (needs the `tbb`
   tables + mask + record-count constants widened), or gating which band-selector applies a record.
@@ -152,10 +153,12 @@ Band filtering lives in `dsp_nu`. There are **two** halves:
 - The MMIO peripheral map, memory map, and the fact that flashing is done by the Nuvoton **LDROM
   bootloader** (the app images don't self-program flash): **not-editable** (silicon/bootloader-gated).
 
-### Voice / alert audio  →  not-editable (uncracked)
+### Voice / alert audio  →  data-edit  ·  `r7_sound.py`  ·  SAFE
 
-`sound_dbnu` (and `STSD`) decode fine as containers, but the internal voice-clip index/codec is not
-reverse-engineered. No safe way to author audio. **not-editable** for practical purposes.
+`sound_dbnu` decodes (key 255) to **raw 8-bit signed PCM, mono** (silence = `0xE2`), ~23 voice clips.
+Extract clips to WAV, edit, and inject a same-length replacement in place — round-trip verified
+0-diff. Full how-to: **[SOUND.md](SOUND.md)**. Keep the byte length constant (pad/trim with silence).
+(`STSD` is the STM32 sibling's bank — leave it alone.)
 
 ### The ST\* STM32 images  →  not-editable *for an R7*  ·  DO NOT FLASH
 
@@ -176,14 +179,14 @@ silicon/base-address mismatch at worst**. Leave them alone. See [FIRMWARE_MAP.md
 | Boot logo, an icon, a signal bar | data-edit | [GRAPHICS.md](GRAPHICS.md) |
 | The on-screen font's look | data-edit | fonts `0x2ba8a`–`0x2d526` ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.9) |
 | Scan animation colors/tiles | data-edit | [SCAN_ANIMATION.md](SCAN_ANIMATION.md) |
-| Scan animation *motion* | data-edit (untooled) | LZSS `.data` framedata — needs a packer |
+| Scan animation *motion* | data-edit | `r7_lzss.py` re-packs `.data` framedata |
 | Add/remove cameras or POIs | data-edit | [GPS_DATABASE.md](GPS_DATABASE.md) |
-| Shift a band/Ka sweep frequency | data-edit (expert) | dsp_nu sweep tables ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2.2) |
+| Move an X/K/Ka detection frequency | data-edit (expert) | `r7_bands.py` ([BAND_FILTERING.md](BAND_FILTERING.md)) |
 | Turn an existing Ka segment on/off | runtime-config | on-device "Ka Segmentation" menu |
 | A current setting (theme, filters, quota) | runtime-config | on-device menu (EEPROM, not the `.bin`) |
 | A power-on/factory default | code-patch | `FUN_0x1d29c` immediates |
 | Band-mux / detection logic, new segment | code-patch | dsp_nu ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2) |
-| Voice / alert audio | not-editable | format uncracked |
+| Replace a voice / alert clip | data-edit | `r7_sound.py` ([SOUND.md](SOUND.md)) |
 | Anything in the ST\* sections | not-editable | different device — do not flash |
 
 Before flashing anything, read **[FLASHING.md](FLASHING.md)** and keep a stock `.bin`. Change one

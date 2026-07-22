@@ -71,10 +71,12 @@ Decoding ui_nu/dsp_nu/gps_nu yields **ARM Cortex-M, Thumb-2, little-endian, load
 Load `decoded/*.bin` in Ghidra as **ARM:LE:32:Cortex:default**, image base `0x0`. Extract them with
 `python3 tools/r7_unpack.py extract <fw.bin> decoded/`.
 
-`.data` is **LZSS-compressed** in flash and unpacked at boot by a custom decompressor
-(`FUN_00000488`; copy-descriptor table at ui_nu `0x2f78c`). Note: because of the compressed `.data`
-tail, ui_nu's real content extends slightly past its declared length field — decode a bit beyond
-nominal when reading it (the tools handle this).
+At boot, a copy-descriptor table at ui_nu `0x2f78c` (entries `{src, dst, len, func}`) initializes
+RAM. Block 1 is **`.data`** — **LZSS-compressed** in flash at `0x2f7ac`, unpacked by a custom
+decompressor (`FUN_00000488`) to SRAM `0x20000000` (0x514 B). Block 2 is **`.bss`** — a
+**zero-fill** (`func 0x14a0`), not a second compressed copy. Because of the compressed `.data` tail,
+ui_nu's real content extends slightly past its declared length field — decode a bit beyond nominal
+when reading it (the tools handle this). Full decompressed table map: [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.4.
 
 ## 4. ui_nu display / graphics system
 
@@ -89,8 +91,8 @@ nominal when reading it (the tools handle this).
 
 ## 5. dsp_nu — the RF/detection side
 
-The DSP exposes a **serial debug command console** (dispatch table at `0xdbe0`, entries
-`{name_ptr, handler_ptr, index}`). Notable commands: `BSEL` (band select) writes mux register
+The DSP exposes a **serial debug command console** (dispatch table at `0xdbcc`, entries
+`{index, name_ptr, handler_ptr}`). Notable commands: `BSEL` (band select) writes mux register
 `0x40004000`; `SKAH`/`SKAL` set the Ka sweep high/low bounds; `BW`/`TU`/`PLL` set tuner bandwidth /
 tuner / PLL. Core helpers: `FUN_00004b58` programs the tuner, `FUN_000047e0` the PLL,
 `FUN_000010c6` sets mux register fields. This is the layer that controls **band filtering**; editing

@@ -40,10 +40,20 @@ This project is unaffiliated with and unendorsed by Uniden.
 | **Boot logo & bitmaps** (replace the "Uniden" splash) | `r7_gfx.py` | [docs/GRAPHICS.md](docs/GRAPHICS.md) |
 | **GPS / camera database** (speed, red-light, custom points) | `r7_gpsdb.py` | [docs/GPS_DATABASE.md](docs/GPS_DATABASE.md) |
 | **"Scan" idle animation** (the sweeping bar) | `r7_scan.py` | [docs/SCAN_ANIMATION.md](docs/SCAN_ANIMATION.md) |
+| **RF band frequencies** (move X/K/Ka detection windows) | `r7_bands.py` | [docs/BAND_FILTERING.md](docs/BAND_FILTERING.md) |
+| **Voice / alert audio** (8-bit PCM clips) | `r7_sound.py` | [docs/SOUND.md](docs/SOUND.md) |
 | **Inspect / unpack the container** | `r7_unpack.py` | [docs/FORMAT.md](docs/FORMAT.md) |
 | **DSP serial messages** (band enables, Ka-segment mask — runtime, no reflash) | `r7_ipc.py` | [docs/DSP_PROTOCOL.md](docs/DSP_PROTOCOL.md) |
 
 Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
+
+**Want the complete picture?** [docs/WHAT_YOU_CAN_CHANGE.md](docs/WHAT_YOU_CAN_CHANGE.md) classifies
+*everything* in the firmware as data-edit / code-patch / runtime-config / not-editable, and
+[docs/FIRMWARE_MAP.md](docs/FIRMWARE_MAP.md) is the exhaustive region-by-region byte map.
+
+**Analysis utilities:** `r7_alertsim.py` (predict which cameras alert off-device — replicates the
+`gps_nu` directional/distance matcher), `r7_lzss.py` (the `.data` LZSS (de)compressor — unblocks scan
+*motion* edits), `r7_iplink.py` (the ui_nu↔gps_nu inter-MCU link codec).
 
 ---
 
@@ -124,8 +134,11 @@ very welcome.
 ## Repository layout
 
 ```
-tools/     the CLIs (r7_unpack, r7_patch, r7_gfx, r7_gpsdb, r7_scan)
-docs/      detailed guides (format, setup, flashing, and one per capability)
+tools/     the CLIs — editing: r7_patch r7_gfx r7_gpsdb r7_scan r7_bands r7_sound;
+           container: r7_unpack; analysis: r7_alertsim r7_lzss r7_iplink
+docs/      guides: FORMAT, SETUP, FLASHING; per-capability (TEXT, GRAPHICS, GPS_DATABASE,
+           SCAN_ANIMATION, BAND_FILTERING, SOUND); FIRMWARE_MAP + WHAT_YOU_CAN_CHANGE;
+           REVERSE_ENGINEERING
 examples/  clean templates (e.g. a GPS-database CSV)
 ```
 

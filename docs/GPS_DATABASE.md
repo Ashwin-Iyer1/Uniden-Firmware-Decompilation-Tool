@@ -11,7 +11,8 @@ lat  float32     latitude  (decimal degrees)
 lon  float32     longitude (decimal degrees)
 f0   u8          camera TYPE:  1 = speed camera,  2 = red-light camera
 speed u8         posted speed limit (speed cameras); 0 = none
-f2   u8          sub-flag (1/2)
+f2   u8          directional match mode: 1 = one-way (alert within ±30° of heading),
+                              2 = two-way (±30° of heading or its reverse)
 cat  u8          alert category (1/2)
 heading u16      approach direction, 0–360 (360 = any direction)
 —    u16         reserved (0xFFFF)
