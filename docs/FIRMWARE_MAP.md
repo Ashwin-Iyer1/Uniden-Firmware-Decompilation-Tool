@@ -615,10 +615,13 @@ any behavior change (e.g. accepting a different GPS baud/sentence set) is an ARM
 
 ## 4. sound_dbnu — voice / alert audio (key 255)
 
-File `0x055a33`, ~2 MB fixed slot. The **outer container encoding is trivially reversible**
-(`decode_old_model(255, …)`, verified byte-exact), but the **internal voice-clip index/codec format
-is not reverse-engineered** in this project. `not-editable` for authoring purposes. Presence is gated
-by header flag bit0 (§0.1) and described by the SNDD record.
+File `0x055a33`, ~2 MB fixed slot. After `decode_old_model(255, …)` the payload is **raw 8-bit
+*signed* PCM, mono** (1 byte = 1 sample) — **no TOC, no codec**. Silence = constant byte `0xE2`
+(≈ −30). Content runs `0x000000`–`0x1f3a35` (~2.05 MB) then `0xE1` padding; ~128 s @16 kHz. The
+stream splits into ~23 silence-delimited **voice clips**. **editable: data-edit** — extract clips to
+WAV, edit, inject back in place (same byte length), round-trip verified 0-diff. Tool `r7_sound.py`;
+guide [SOUND.md](SOUND.md). Presence gated by header flag bit0 (§0.1), described by the SNDD record.
+(`STSD` is the STM32 sibling's voice bank — irrelevant to R7.)
 
 ---
 

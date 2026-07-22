@@ -28,6 +28,7 @@ keep a stock `.bin`. See [FLASHING.md](FLASHING.md).
 - **Graphics**: boot logo, icons, signal bars, backgrounds, fonts — [GRAPHICS.md](GRAPHICS.md)
 - **Scan idle animation** tiles (the look) — [SCAN_ANIMATION.md](SCAN_ANIMATION.md)
 - **GPS / camera database**: add/remove/modify camera & POI points — [GPS_DATABASE.md](GPS_DATABASE.md)
+- **Voice / alert audio**: replace clips (8-bit PCM) — [SOUND.md](SOUND.md)
 - **DSP band frequencies** — move X/K/Ka detection windows via the coefficient table — `r7_bands.py` (expert)
 
 **RISKY — code-patches (real firmware dev; can brick if wrong, Recovery Mode is your net):**
@@ -40,7 +41,6 @@ keep a stock `.bin`. See [FLASHING.md](FLASHING.md).
 
 - Any current **user setting** (theme, band on/off, Ka segments, filters, quotas): change it in the
   **on-device menu** — it lives in EEPROM, not the `.bin`. Editing firmware won't move it.
-- **Voice / alert audio** internal format — not reverse-engineered.
 - **Settings defaults as a table** — there is none; defaults are code immediates (a code-patch).
 - **Silicon** (MMIO registers, memory map, MCU flashing) and the **ST\* STM32 images** (a different
   device — never flash them to an R7).
@@ -152,10 +152,12 @@ Band filtering lives in `dsp_nu`. There are **two** halves:
 - The MMIO peripheral map, memory map, and the fact that flashing is done by the Nuvoton **LDROM
   bootloader** (the app images don't self-program flash): **not-editable** (silicon/bootloader-gated).
 
-### Voice / alert audio  →  not-editable (uncracked)
+### Voice / alert audio  →  data-edit  ·  `r7_sound.py`  ·  SAFE
 
-`sound_dbnu` (and `STSD`) decode fine as containers, but the internal voice-clip index/codec is not
-reverse-engineered. No safe way to author audio. **not-editable** for practical purposes.
+`sound_dbnu` decodes (key 255) to **raw 8-bit signed PCM, mono** (silence = `0xE2`), ~23 voice clips.
+Extract clips to WAV, edit, and inject a same-length replacement in place — round-trip verified
+0-diff. Full how-to: **[SOUND.md](SOUND.md)**. Keep the byte length constant (pad/trim with silence).
+(`STSD` is the STM32 sibling's bank — leave it alone.)
 
 ### The ST\* STM32 images  →  not-editable *for an R7*  ·  DO NOT FLASH
 
@@ -183,7 +185,7 @@ silicon/base-address mismatch at worst**. Leave them alone. See [FIRMWARE_MAP.md
 | A current setting (theme, filters, quota) | runtime-config | on-device menu (EEPROM, not the `.bin`) |
 | A power-on/factory default | code-patch | `FUN_0x1d29c` immediates |
 | Band-mux / detection logic, new segment | code-patch | dsp_nu ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2) |
-| Voice / alert audio | not-editable | format uncracked |
+| Replace a voice / alert clip | data-edit | `r7_sound.py` ([SOUND.md](SOUND.md)) |
 | Anything in the ST\* sections | not-editable | different device — do not flash |
 
 Before flashing anything, read **[FLASHING.md](FLASHING.md)** and keep a stock `.bin`. Change one
