@@ -64,11 +64,7 @@ python3 -m pip install -r requirements.txt
 
 This repo does **not** include firmware. Obtain your own `.bin`:
 
-- Run the official **Uniden Updater** — it downloads the firmware/database package it flashes; the
-  combined `R7_v..._db....bin` lives in its download/temp folder.
-- Or use the community extractor
-  [AngeloD2022/uniden-firmware-tool](https://github.com/AngeloD2022/uniden-firmware-tool) to pull
-  distributions from uniden.info.
+- Download from [Official Uniden Software Site](https://www.uniden.info/download/index.cfm)
 
 Keep the untouched original as your recovery image.
 
