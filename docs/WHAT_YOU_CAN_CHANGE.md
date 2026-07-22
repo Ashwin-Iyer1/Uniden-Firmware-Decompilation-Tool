@@ -118,10 +118,20 @@ Band filtering lives in `dsp_nu`. There are **two** halves:
 - **runtime / volatile:** the DSP serial console commands (`BSEL/TU/PLL/SK/SKAL/SKAH/BW/S/SS/SX`)
   write only RAM/MMIO — **nothing is persisted**, so they're live bench knobs, not a way to save
   changes. Permanent changes must edit the flash tables above.
+- **runtime / protocol:** the DSP also accepts a framed **radar-configuration message** (opcode
+  `0x10`) on that same UART, whose `ka_mask` field sets all nine Ka segments at once and whose
+  `band_bits` field drives the band enables — see [DSP_PROTOCOL.md](DSP_PROTOCOL.md), tool
+  `tools/r7_ipc.py`. Also volatile. **Whether that UART is reachable from outside the case is
+  unproven** — the console and this protocol share one port, so both hinge on the same question.
 
 > Turning existing Ka segments on/off is already a **user menu setting** ("Ka Segmentation", 9-bit
 > mask) — the runtime mask **overrides** the flash `enable_default`. So to *force* a segment off in
 > firmware you must patch the mask source/mode-id (code-patch), not just the table.
+>
+> That mask is now fully traced: it is `ka_mask` (field 12 of DSP message `0x10`), bit *N* → sweep
+> record mode id `0x10+N`, and on the ui side it is packed from `config[0xe0..0xe8]` with inverted
+> sense (FIRMWARE_MAP §1.13/§2.8). Note the DSP ignores `ka_mask` entirely unless `band_bits` bits 0
+> **and** 2 are set.
 
 ### Settings & their defaults  →  values are runtime-config; defaults are code-patch
 
