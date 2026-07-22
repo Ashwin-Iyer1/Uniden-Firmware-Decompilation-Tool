@@ -29,7 +29,7 @@ A complete, region-by-region map of the Uniden R7 combined firmware image, rever
 | 1 | **ui_nu** (DRSWMAI) | `0x000018` | 195072 | 182 | Main MCU — UI, menus, display, graphics, fonts, strings |
 | 2 | **dsp_nu** (DRSWDSP) | `0x02fa21` | 114688 | 184 | DSP MCU — RF sweep, band logic, serial console |
 | 3 | **gps_nu** (DRSWSUB) | `0x04ba2a` | 40960 | 183 | Sub/GPS MCU |
-| 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | 255 | voice / alert audio (internal format not cracked) |
+| 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | **225** | voice / alert audio — Nuvoton ISD3800 flash image, 4-bit ADPCM (§4) |
 | 5 | **GPSD:LRDB** | `0x255a46` | ~204 KB | 210 | camera / POI database |
 | 6 | STUI / STDS / STGP / STSD | `0x288a65`+ | — | 182/184/183/255 | parallel STM32 image set (not run by the R7) |
 | — | NMGF footer | `0x4e26a4` | 12 B | plain | merge marker; file ends at NMGF+12 |
@@ -520,12 +520,20 @@ plus direct stores to `0x400048a0` and `0x40004800`; caches band state to SRAM `
 u16 @ `0x400`: bits[0:10]=version (=150), bits[10:16]=sub (=0); printed by the `V` command. `data-edit`
 (cosmetic).
 
-### 2.6 K-band coefficient region  ·  confidence: medium / editable: unknown
+### 2.6 Band coefficient table @ `0x0dd34`  ·  confidence: high / editable: data-edit
 
-K-band sweep center `24136` MHz as u32 @ `0x15ec0` (also u16 @`0xffd4`; tuner words near `0xda08`,
-`0xffcc`, `0x15eb4`). The K/X path is **not** in the 9 Ka sweep groups. The `24136` constant is an
-editable u32 (shifts the K-band center), but the surrounding coefficient layout is only partially
-mapped — treat edits here as **unknown/risky** pending more RE.
+The DSP's real RF detection windows live in a **coefficient table**: **33 records × 16 bytes** at
+decoded `dsp_nu` `0x0dd34`, `{u32 band_type, u32 freq_low_kHz, u32 freq_high_kHz, u32 ifconst}`.
+Frequencies are stored **directly in kHz** (verified: `rec0 type=1 = X 10.499–10.551 GHz`,
+`rec1 type=2 = K 24.049–24.251 GHz`). `band_type`: 1=X, 2=K, 3/6=Ka(low-mix), 4=Ka(high-mix),
+7=K(alt), 8=spot/instant. The 20-byte sweep-schedule records' `+0x10` field ("tuner_code") is a
+**pointer into this table**, and the PLL (`FUN_0x47e0`) is programmed straight from `freq_high` via a
+25 MHz-reference fractional-N divider — **no hidden harmonic multiplier**, so these numbers *are* the
+RF frequencies. **Editing `freq_low`/`freq_high` moves a band** — a clean length-preserving data-edit
+(`tools/r7_bands.py`). Caveat: records are shared across modes (the X record is referenced by nearly
+every group), so one edit affects every mode using it; `band_type`/`ifconst` are hardware-coupled,
+leave them. Full guide: [BAND_FILTERING.md](BAND_FILTERING.md). (Older note: the K center ≈`24136` MHz
+appears at `0x15ec0` too, but the authoritative editable data is this table.)
 
 ### 2.7 Serial frame protocol  ·  confidence: high
 
@@ -580,18 +588,60 @@ independently reproducing the table's declared length.
 Nuvoton Cortex-M4F (smaller part — 64 IRQs, ~16 KB SRAM). Initial SP `0x20003d38`, reset `0x174`,
 80-entry vector table (`0x0`–`0x140`), default handler `0x1b9`. Named IRQs: IRQ36→`0xa69` (UART0),
 IRQ37→`0xb81` (UART1) — matches gps_nu's heavy UART0/UART1 use. Splice at container `0x4ba2a`.
+`.data`/`.bss` init at reset; entropy ~6.0–6.6 (dense Thumb code; no large data tables).
 
-This section had no deeper region breakdown among the findings beyond the boot/vector structure
-above (the GPS *database* is a separate `GPSD:LRDB` section, §5 — not part of this MCU image).
+**Role — GPS-receiver front-end + UART router**  ·  confidence: high
+
+| Item | Offset | What it is |
+|---|---|---|
+| NMEA `RMC` id | `0x3a5c` | parses `$G_RMC` (position / velocity / time / date) |
+| NMEA `GGA` id | `0x3bf8` | parses `$G_GGA` (fix quality, altitude, satellites) |
+| `at$uart0=ui` | `0x9d60` | AT command: route UART0 to the **main MCU (UI)** |
+| `at$uart0=gps` | `0x9d6c` | AT command: route UART0 to the **GPS module** |
+| `HDT` | `0x9b05` | true-heading handling |
+
+`gps_nu` reads the serial GPS module, parses NMEA into a fix, and **muxes UART0** between the GPS
+module, the main MCU, and the external port (the `at$uart0=…` commands switch it — how GPS and the
+update/debug serial share one physical line).
+
+**It is also the camera-DB matcher + GPS-lockout store**  ·  confidence: high
+
+| Item | Where | What |
+|---|---|---|
+| DB read primitive | `FUN_0x5dd0` (SPI ctrl `0x40061000`) | reads external SPI flash (cmd `0x03`+24-bit addr) |
+| Camera DB in flash | ext-flash `0x1000` (count u16 @ `0x0000`) | the `GPSD:LRDB` records, relocated into the sub-MCU's flash view |
+| DB → RAM | `FUN_0x92b4` → RAM `0x20000720` | per-record stage for matching |
+| **Per-record matcher** | **`FUN_0x153c`** (loop `0x1986`) | 0.036° latitude window (needs lat-desc sort) → distance+bearing gate |
+| GPS fix struct | RAM `0x20000608` | lat`+8`, lon`+0xc`, heading u16 `+0x14` |
+| Best match → ui_nu | RAM `0x200007fc` | telemetry message the main MCU renders |
+| GPS auto-lockout / user-mark | ext-flash A/B `0x61000`/`0x62000` (16 B recs), `0x73000`/`0x74000` (8 B) | **device-written, wear-leveled — NOT in the `.bin`** |
+
+So the DB *matching*, the directional/distance alert gate, and the auto-lockout learning all live in
+**`gps_nu`**; `ui_nu` only **renders** the pre-matched alert (message decode `FUN_0xf5f4` → arbiter
+`FUN_0x16eb4` → dispatch `FUN_0x6efc` → renderer `FUN_0x77e0`; alert icons: GPS-pin `0x249ea`,
+speed-cam `0x2408a`, red-light `0x2372a`, 40×30 RGB565). This lets us read the DB record fields off
+the consumer code — see §5.2.
+
+**Editability:** the matcher/parser/mux are **code-patch** (Thumb logic) and mostly low user value;
+the alert *tolerances* (±30° heading, distance table) are `gps_nu` code immediates. The **camera
+database itself** (`GPSD:LRDB`, §5) is fully data-editable; the **GPS auto-lockout data is not in the
+`.bin`** (it's device-written external flash) so it can't be edited by firmware patching.
 
 ---
 
-## 4. sound_dbnu — voice / alert audio (key 255)
+## 4. sound_dbnu — voice / alert audio (key 225, ISD3800 image)
 
-File `0x055a33`, ~2 MB fixed slot. The **outer container encoding is trivially reversible**
-(`decode_old_model(255, …)`, verified byte-exact), but the **internal voice-clip index/codec format
-is not reverse-engineered** in this project. `not-editable` for authoring purposes. Presence is gated
-by header flag bit0 (§0.1) and described by the SNDD record.
+File `0x055a33`, ~2 MB fixed slot. **Not PCM** — it is a **Nuvoton ISD3800 ChipCorder flash image**
+(the R7 has a dedicated ISD3800 voice chip that reads this bank from the Winbond SPI flash, decodes
+**4-bit ADPCM** in hardware, and drives the speaker via Class-D PWM; the NUC442 only sends "play
+prompt N"). Decode with `decode_old_model(**225**, …)` — **not 255** (255 was the wrong key behind
+the retracted "8-bit PCM" theory). The decoded image is: a `0xCX` **memory header** (`0xcf`), then a
+**250-entry voice-prompt directory** (`(END,START)` u24-LE pairs from `0x1A`, first START at `0x17`),
+the compressed clips, then `0xFF` padding (content ends `0x1f3a35` on v153). Silence/timing decode
+correctly; the exact ADPCM predictor is **proprietary (in-chip), not yet bit-exact** — `r7_sound.py`
+extracts raw `.adpcm` + best-effort WAV, and bit-exact edits need Nuvoton's ISD-VPE tool. Guide
+[SOUND.md](SOUND.md). Presence gated by header flag bit0 (§0.1), described by the SNDD record.
+(`STSD` is the STM32 sibling's voice bank — irrelevant to R7.)
 
 ---
 
@@ -609,7 +659,7 @@ File `0x255a46`, ~204 KB. Fully enumerated from all **13,050 real records**. Com
 - **Footer** @ `0x288a46`: `[4B key-210-encoded POI count → 13050][4B plaintext date u32 LE =
   20260702 YYYYMMDD]["LRDB"]["DRSWGDB"]`. **No checksum anywhere.**
 
-### 5.2 Record schema (16 B, decoded)  ·  confidence: high (f2 = medium)
+### 5.2 Record schema (16 B, decoded)  ·  confidence: high
 
 | Off | Type | Field | Meaning |
 |---|---|---|---|
@@ -617,7 +667,7 @@ File `0x255a46`, ~204 KB. Fully enumerated from all **13,050 real records**. Com
 | `+4` | f32 LE | lon | decimal degrees |
 | `+8` | u8 | **f0 = camera TYPE** | 1 = speed cam (7623), 2 = red-light cam (5427) |
 | `+9` | u8 | **speed** | posted limit in local unit, multiple of 5; **0 for red-light** |
-| `+10` | u8 | **f2 = install sub-flag** | 1 (9500) / 2 (3550); semantic not fully cracked |
+| `+10` | u8 | **f2 = directional match mode** | 1 = unidirectional (alert only within ±30° of stored heading); 2 = bidirectional (±30° of heading OR heading+180) |
 | `+11` | u8 | **category = region/unit** | 1 = Canada/metric km/h (1506), 2 = USA/mph (11544) |
 | `+12` | u16 LE | **heading** | approach bearing **1–360** (never 0); 360 = omni/any |
 | `+14` | u16 LE | reserved | constant `0xFFFF` on all real records (terminator, **not** a checksum) |
@@ -634,11 +684,14 @@ File `0x255a46`, ~204 KB. Fully enumerated from all **13,050 real records**. Com
   over-represented as coarse fallbacks.
 - **Combined RLC+speed installations** = **two** records at identical coord+heading (one f0=1, one
   f0=2); 377 such exact-coordinate pairs. There is no single "combined" type value.
-- **f2** (medium/low confidence — the only field not definitively cracked): binary 1/2,
-  installation-level (uniform within a coordinate cluster), orthogonal to type & region, strongly
-  regionally gradient (f2=2 share ~50–66% Mountain-West vs ~14% Northeast), correlates with
-  omni-heading and exact-coord clustering. Leading hypothesis: fixed/single-approach (1) vs
-  mobile/multi-approach/bidirectional (2). Resolving it requires disassembling the DB-alert consumer.
+- **f2 = directional match mode** (CRACKED from the `gps_nu` matcher `FUN_0x153c` `0x16e6`–`0x17a8`,
+  §3): **1 = unidirectional** — the record alerts only when your travel heading is within **±30°** of
+  the stored approach `heading`; **2 = bidirectional** — alerts within ±30° of `heading` *or* its
+  reverse `heading+180` (on a reverse match the displayed heading flips). `0` is a runtime-only
+  fallback (forced when `heading>360`) and is **never stored** in the DB. Confirms against the data:
+  f2=1 (9500) is 97% directional; f2=2 (3550) has 4.6× more omni headings. **Editable data field** —
+  set 1 for one-way, 2 for two-way; takes effect with no code patch. The ±30° tolerance is a `gps_nu`
+  code immediate.
 
 ### 5.3 GPS-DB editable fields summary
 
@@ -716,6 +769,26 @@ All three R7 code MCUs are **Nuvoton NuMicro Cortex-M4F**, load base flash `0x0`
 
 > Exact SKUs aren't pinned from the image (would need `SYS_PDID` @`0x40000000`, a runtime register).
 > Family is M480-class for Main+DSP and a smaller M4F for GPS.
+
+---
+
+## 9. Inter-MCU IPC (ui_nu ↔ gps_nu ↔ dsp_nu)  ·  confidence: high (transport) / medium (some fields)
+
+The three MCUs are separate chips linked by **UARTs carrying a binary framed protocol** (frames begin
+with a `0xd2` sync byte). Verified peripheral bases:
+
+| Link | ui_nu side | peer side | notes |
+|---|---|---|---|
+| ui_nu ↔ **gps_nu** (SUB) | `0x40074000` | `0x40070000` | menu settings out, GPS fix + matched-alert in |
+| ui_nu ↔ **dsp_nu** (DSP) | `0x40073000` | `0x40073000` | DSP also runs an ASCII-hex console/framer here (IRQ107, ring buf `0x20000040`) |
+| gps_nu ↔ **GPS chip** | — | `0x40071000` | NMEA in; `$PMTK`/`$PGKC` config out (MediaTek/Airoha-class GPS) |
+
+This is the glue that carries the user's band/segment/filter **menu settings** out to where they take
+effect and brings the **GPS fix + pre-matched camera alert** back for `ui_nu` to render. It is a
+**runtime wire protocol, not stored data** — you don't edit it; it's documented so the settings→RF and
+GPS→alert paths aren't a black box. `tools/r7_iplink.py` decodes the ui_nu↔gps_nu frames off-device
+(`selftest` / `decode-config` / `decode-fix`); the DSP ASCII-hex console is the same family as the
+serial commands in §2.1. **Editability: not-editable** (transport/logic; a code-patch at most).
 
 ---
 
