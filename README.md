@@ -51,6 +51,10 @@ Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
 *everything* in the firmware as data-edit / code-patch / runtime-config / not-editable, and
 [docs/FIRMWARE_MAP.md](docs/FIRMWARE_MAP.md) is the exhaustive region-by-region byte map.
 
+**Analysis utilities:** `r7_alertsim.py` (predict which cameras alert off-device — replicates the
+`gps_nu` directional/distance matcher), `r7_lzss.py` (the `.data` LZSS (de)compressor — unblocks scan
+*motion* edits), `r7_iplink.py` (the ui_nu↔gps_nu inter-MCU link codec).
+
 ---
 
 ## Requirements

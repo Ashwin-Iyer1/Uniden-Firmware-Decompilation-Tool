@@ -600,16 +600,32 @@ IRQ37→`0xb81` (UART1) — matches gps_nu's heavy UART0/UART1 use. Splice at co
 | `at$uart0=gps` | `0x9d6c` | AT command: route UART0 to the **GPS module** |
 | `HDT` | `0x9b05` | true-heading handling |
 
-`gps_nu` reads the serial GPS module, parses NMEA sentences into a fix (lat/lon/speed/heading/time),
-and **muxes UART0** between the GPS module, the main MCU, and the external port — which is how the
-GPS stream and the update/debug serial share one physical line (the `at$uart0=…` commands switch it).
-It is a **data provider**: it does *not* hold the camera database, the GPS auto-lockout state, or the
-alert logic — those live in the **main MCU** (`ui_nu`) which consumes the fix `gps_nu` produces.
+`gps_nu` reads the serial GPS module, parses NMEA into a fix, and **muxes UART0** between the GPS
+module, the main MCU, and the external port (the `at$uart0=…` commands switch it — how GPS and the
+update/debug serial share one physical line).
 
-**Editability:** almost entirely **code-patch** (the NMEA parser, UART mux, and framing are Thumb
-code) and **low user value** — it's GPS plumbing, not a feature surface. No large data tables to swap;
-any behavior change (e.g. accepting a different GPS baud/sentence set) is an ARM-code edit. The GPS
-*database* is the separate `GPSD:LRDB` section (§5), which is fully data-editable.
+**It is also the camera-DB matcher + GPS-lockout store**  ·  confidence: high
+
+| Item | Where | What |
+|---|---|---|
+| DB read primitive | `FUN_0x5dd0` (SPI ctrl `0x40061000`) | reads external SPI flash (cmd `0x03`+24-bit addr) |
+| Camera DB in flash | ext-flash `0x1000` (count u16 @ `0x0000`) | the `GPSD:LRDB` records, relocated into the sub-MCU's flash view |
+| DB → RAM | `FUN_0x92b4` → RAM `0x20000720` | per-record stage for matching |
+| **Per-record matcher** | **`FUN_0x153c`** (loop `0x1986`) | 0.036° latitude window (needs lat-desc sort) → distance+bearing gate |
+| GPS fix struct | RAM `0x20000608` | lat`+8`, lon`+0xc`, heading u16 `+0x14` |
+| Best match → ui_nu | RAM `0x200007fc` | telemetry message the main MCU renders |
+| GPS auto-lockout / user-mark | ext-flash A/B `0x61000`/`0x62000` (16 B recs), `0x73000`/`0x74000` (8 B) | **device-written, wear-leveled — NOT in the `.bin`** |
+
+So the DB *matching*, the directional/distance alert gate, and the auto-lockout learning all live in
+**`gps_nu`**; `ui_nu` only **renders** the pre-matched alert (message decode `FUN_0xf5f4` → arbiter
+`FUN_0x16eb4` → dispatch `FUN_0x6efc` → renderer `FUN_0x77e0`; alert icons: GPS-pin `0x249ea`,
+speed-cam `0x2408a`, red-light `0x2372a`, 40×30 RGB565). This lets us read the DB record fields off
+the consumer code — see §5.2.
+
+**Editability:** the matcher/parser/mux are **code-patch** (Thumb logic) and mostly low user value;
+the alert *tolerances* (±30° heading, distance table) are `gps_nu` code immediates. The **camera
+database itself** (`GPSD:LRDB`, §5) is fully data-editable; the **GPS auto-lockout data is not in the
+`.bin`** (it's device-written external flash) so it can't be edited by firmware patching.
 
 ---
 
@@ -639,7 +655,7 @@ File `0x255a46`, ~204 KB. Fully enumerated from all **13,050 real records**. Com
 - **Footer** @ `0x288a46`: `[4B key-210-encoded POI count → 13050][4B plaintext date u32 LE =
   20260702 YYYYMMDD]["LRDB"]["DRSWGDB"]`. **No checksum anywhere.**
 
-### 5.2 Record schema (16 B, decoded)  ·  confidence: high (f2 = medium)
+### 5.2 Record schema (16 B, decoded)  ·  confidence: high
 
 | Off | Type | Field | Meaning |
 |---|---|---|---|
@@ -647,7 +663,7 @@ File `0x255a46`, ~204 KB. Fully enumerated from all **13,050 real records**. Com
 | `+4` | f32 LE | lon | decimal degrees |
 | `+8` | u8 | **f0 = camera TYPE** | 1 = speed cam (7623), 2 = red-light cam (5427) |
 | `+9` | u8 | **speed** | posted limit in local unit, multiple of 5; **0 for red-light** |
-| `+10` | u8 | **f2 = install sub-flag** | 1 (9500) / 2 (3550); semantic not fully cracked |
+| `+10` | u8 | **f2 = directional match mode** | 1 = unidirectional (alert only within ±30° of stored heading); 2 = bidirectional (±30° of heading OR heading+180) |
 | `+11` | u8 | **category = region/unit** | 1 = Canada/metric km/h (1506), 2 = USA/mph (11544) |
 | `+12` | u16 LE | **heading** | approach bearing **1–360** (never 0); 360 = omni/any |
 | `+14` | u16 LE | reserved | constant `0xFFFF` on all real records (terminator, **not** a checksum) |
@@ -664,11 +680,14 @@ File `0x255a46`, ~204 KB. Fully enumerated from all **13,050 real records**. Com
   over-represented as coarse fallbacks.
 - **Combined RLC+speed installations** = **two** records at identical coord+heading (one f0=1, one
   f0=2); 377 such exact-coordinate pairs. There is no single "combined" type value.
-- **f2** (medium/low confidence — the only field not definitively cracked): binary 1/2,
-  installation-level (uniform within a coordinate cluster), orthogonal to type & region, strongly
-  regionally gradient (f2=2 share ~50–66% Mountain-West vs ~14% Northeast), correlates with
-  omni-heading and exact-coord clustering. Leading hypothesis: fixed/single-approach (1) vs
-  mobile/multi-approach/bidirectional (2). Resolving it requires disassembling the DB-alert consumer.
+- **f2 = directional match mode** (CRACKED from the `gps_nu` matcher `FUN_0x153c` `0x16e6`–`0x17a8`,
+  §3): **1 = unidirectional** — the record alerts only when your travel heading is within **±30°** of
+  the stored approach `heading`; **2 = bidirectional** — alerts within ±30° of `heading` *or* its
+  reverse `heading+180` (on a reverse match the displayed heading flips). `0` is a runtime-only
+  fallback (forced when `heading>360`) and is **never stored** in the DB. Confirms against the data:
+  f2=1 (9500) is 97% directional; f2=2 (3550) has 4.6× more omni headings. **Editable data field** —
+  set 1 for one-way, 2 for two-way; takes effect with no code patch. The ±30° tolerance is a `gps_nu`
+  code immediate.
 
 ### 5.3 GPS-DB editable fields summary
 

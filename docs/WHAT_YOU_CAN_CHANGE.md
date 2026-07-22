@@ -97,8 +97,9 @@ Add, remove, or modify speed cameras, red-light cameras, and custom alert points
 key 210, no checksum, auto re-sorted by latitude. Full schema & workflows:
 **[GPS_DATABASE.md](GPS_DATABASE.md)** and [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §5. Field notes:
 `f0`=type (1 speed / 2 red-light), `speed`=posted limit (0 for red-light), `category`=region/unit
-(1 Canada-km/h, 2 USA-mph), `heading`=1–360 (360=any, never 0), `f2`=install sub-flag (semantic not
-fully cracked — safe to round-trip). Combined RLC+speed sites are **two** records at the same coord.
+(1 Canada-km/h, 2 USA-mph), `heading`=1–360 (360=any, never 0), `f2`=directional match mode
+(1 = one-way / ±30° of heading, 2 = two-way / ±30° of heading or its reverse — cracked from the
+`gps_nu` matcher). Combined RLC+speed sites are **two** records at the same coord.
 Flashed via the Updater's lower-risk "Download Files" path.
 
 ### Band filtering (the DSP side)  →  frequencies data-edit; logic code-patch  ·  `r7_bands.py`  ·  RISKY (expert)
