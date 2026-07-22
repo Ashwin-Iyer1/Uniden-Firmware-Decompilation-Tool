@@ -78,18 +78,18 @@ round-trips under key 182.
 > Changing a font's **box size, char range, or spacing** means patching hardcoded immediates in its
 > draw routine — that's a **code-patch**.
 
-### Scan idle animation  →  tiles are data-edit, motion is code-patch  ·  `r7_scan.py`  ·  SAFE / RISKY
+### Scan idle animation  →  tiles + motion are data-edit  ·  `r7_scan.py`, `r7_lzss.py`  ·  SAFE
 
 The "Scan" main-display animation is **data-driven**, not procedural. The **30 tiles** (11×8 RGB565 @
 `0x29b6e`, 8 themes × 5 states with tile reuse) are uncompressed → edit the *look* with `r7_scan.py`
 (0-diff verified). Full how-to: **[SCAN_ANIMATION.md](SCAN_ANIMATION.md)**.
 
-Changing the **motion** means editing `framedata[20][8]` (per-cell brightness 0–4) at SRAM
-`0x20000298` — but that lives inside the **LZSS-compressed `.data` block1** (flash `0x2f7ac`,
-[FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.4). There is `~0x128` B of `0xFF` headroom after the compressed
-stream, but **no re-compressor exists yet** (the decompressor for `FUN_0x488` is understood; the
-encoder isn't written). So re-choreographing is currently **not tooled** — data-editable in principle,
-requires writing the LZSS packer.
+Changing the **motion** means editing `framedata[20][8]` (per-cell tile-state 0–4) inside the
+**LZSS-compressed `.data` block1** (flash `0x2f7ac`, [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.4). The
+compressor now exists — **`tools/r7_lzss.py`** (verified round-trip; output fits the `~0x128` B of
+`0xFF` headroom after the stock stream). So re-choreographing is **data-edit** now: decompress block1,
+edit the framedata bytes, re-`compress`, splice `.data` back into `ui_nu`. It's a lower-level flow
+than tile editing (no single turnkey command yet), but it's no longer blocked.
 
 ### GPS / camera database  →  data-edit  ·  `r7_gpsdb.py`  ·  SAFE (lowest-risk flash)
 
@@ -178,7 +178,7 @@ silicon/base-address mismatch at worst**. Leave them alone. See [FIRMWARE_MAP.md
 | Boot logo, an icon, a signal bar | data-edit | [GRAPHICS.md](GRAPHICS.md) |
 | The on-screen font's look | data-edit | fonts `0x2ba8a`–`0x2d526` ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.9) |
 | Scan animation colors/tiles | data-edit | [SCAN_ANIMATION.md](SCAN_ANIMATION.md) |
-| Scan animation *motion* | data-edit (untooled) | LZSS `.data` framedata — needs a packer |
+| Scan animation *motion* | data-edit | `r7_lzss.py` re-packs `.data` framedata |
 | Add/remove cameras or POIs | data-edit | [GPS_DATABASE.md](GPS_DATABASE.md) |
 | Move an X/K/Ka detection frequency | data-edit (expert) | `r7_bands.py` ([BAND_FILTERING.md](BAND_FILTERING.md)) |
 | Turn an existing Ka segment on/off | runtime-config | on-device "Ka Segmentation" menu |
