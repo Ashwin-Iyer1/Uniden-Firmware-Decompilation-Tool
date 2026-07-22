@@ -520,12 +520,20 @@ plus direct stores to `0x400048a0` and `0x40004800`; caches band state to SRAM `
 u16 @ `0x400`: bits[0:10]=version (=150), bits[10:16]=sub (=0); printed by the `V` command. `data-edit`
 (cosmetic).
 
-### 2.6 K-band coefficient region  ·  confidence: medium / editable: unknown
+### 2.6 Band coefficient table @ `0x0dd34`  ·  confidence: high / editable: data-edit
 
-K-band sweep center `24136` MHz as u32 @ `0x15ec0` (also u16 @`0xffd4`; tuner words near `0xda08`,
-`0xffcc`, `0x15eb4`). The K/X path is **not** in the 9 Ka sweep groups. The `24136` constant is an
-editable u32 (shifts the K-band center), but the surrounding coefficient layout is only partially
-mapped — treat edits here as **unknown/risky** pending more RE.
+The DSP's real RF detection windows live in a **coefficient table**: **33 records × 16 bytes** at
+decoded `dsp_nu` `0x0dd34`, `{u32 band_type, u32 freq_low_kHz, u32 freq_high_kHz, u32 ifconst}`.
+Frequencies are stored **directly in kHz** (verified: `rec0 type=1 = X 10.499–10.551 GHz`,
+`rec1 type=2 = K 24.049–24.251 GHz`). `band_type`: 1=X, 2=K, 3/6=Ka(low-mix), 4=Ka(high-mix),
+7=K(alt), 8=spot/instant. The 20-byte sweep-schedule records' `+0x10` field ("tuner_code") is a
+**pointer into this table**, and the PLL (`FUN_0x47e0`) is programmed straight from `freq_high` via a
+25 MHz-reference fractional-N divider — **no hidden harmonic multiplier**, so these numbers *are* the
+RF frequencies. **Editing `freq_low`/`freq_high` moves a band** — a clean length-preserving data-edit
+(`tools/r7_bands.py`). Caveat: records are shared across modes (the X record is referenced by nearly
+every group), so one edit affects every mode using it; `band_type`/`ifconst` are hardware-coupled,
+leave them. Full guide: [BAND_FILTERING.md](BAND_FILTERING.md). (Older note: the K center ≈`24136` MHz
+appears at `0x15ec0` too, but the authoritative editable data is this table.)
 
 ### 2.7 Serial frame protocol  ·  confidence: high
 

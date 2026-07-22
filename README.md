@@ -40,6 +40,8 @@ This project is unaffiliated with and unendorsed by Uniden.
 | **Boot logo & bitmaps** (replace the "Uniden" splash) | `r7_gfx.py` | [docs/GRAPHICS.md](docs/GRAPHICS.md) |
 | **GPS / camera database** (speed, red-light, custom points) | `r7_gpsdb.py` | [docs/GPS_DATABASE.md](docs/GPS_DATABASE.md) |
 | **"Scan" idle animation** (the sweeping bar) | `r7_scan.py` | [docs/SCAN_ANIMATION.md](docs/SCAN_ANIMATION.md) |
+| **RF band frequencies** (move X/K/Ka detection windows) | `r7_bands.py` | [docs/BAND_FILTERING.md](docs/BAND_FILTERING.md) |
+| **Voice / alert audio** (8-bit PCM clips) | `r7_sound.py` | [docs/SOUND.md](docs/SOUND.md) |
 | **Inspect / unpack the container** | `r7_unpack.py` | [docs/FORMAT.md](docs/FORMAT.md) |
 | **DSP serial messages** (band enables, Ka-segment mask — runtime, no reflash) | `r7_ipc.py` | [docs/DSP_PROTOCOL.md](docs/DSP_PROTOCOL.md) |
 

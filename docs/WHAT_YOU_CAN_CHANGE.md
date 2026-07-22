@@ -28,7 +28,7 @@ keep a stock `.bin`. See [FLASHING.md](FLASHING.md).
 - **Graphics**: boot logo, icons, signal bars, backgrounds, fonts — [GRAPHICS.md](GRAPHICS.md)
 - **Scan idle animation** tiles (the look) — [SCAN_ANIMATION.md](SCAN_ANIMATION.md)
 - **GPS / camera database**: add/remove/modify camera & POI points — [GPS_DATABASE.md](GPS_DATABASE.md)
-- **DSP band/sweep tuner codes** in the flash sweep tables (the data half of band filtering) — expert
+- **DSP band frequencies** — move X/K/Ka detection windows via the coefficient table — `r7_bands.py` (expert)
 
 **RISKY — code-patches (real firmware dev; can brick if wrong, Recovery Mode is your net):**
 
@@ -101,17 +101,17 @@ key 210, no checksum, auto re-sorted by latitude. Full schema & workflows:
 fully cracked — safe to round-trip). Combined RLC+speed sites are **two** records at the same coord.
 Flashed via the Updater's lower-risk "Download Files" path.
 
-### Band filtering (the DSP side)  →  split: data-edit + code-patch  ·  Ghidra  ·  RISKY (expert)
+### Band filtering (the DSP side)  →  frequencies data-edit; logic code-patch  ·  `r7_bands.py`  ·  RISKY (expert)
 
 Band filtering lives in `dsp_nu`. There are **two** halves:
 
-- **data-edit (tables):** the flash **sweep-schedule records** (20-byte records in 9+ groups —
-  [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2.2). You can shift a step's frequency by editing its
-  `tuner_code` (u32 @ record `+0x10`; `N = freq·77672/1000`, ~+18 MHz per +1 code), force a step off
-  (`enable_default[+2]=0` or zero its code), NOP a step (promote to the `0xffff` sentinel), or move
-  the wide-Ka bounds SKAL `0xde44` / SKAH `0xde54`. The global tuner scale `77672` @`0x4c50` is also a
-  data-edit-able u32 (rescales *all* codes). Edit the decoded image → re-encode key 184 → splice at
-  container `0x2fa21`. *No repo tool automates this yet — it's a manual decode/patch/encode.*
+- **data-edit (frequencies):** the RF detection windows are a **coefficient table** (33×16 B @
+  `0x0dd34`) with `freq_low`/`freq_high` stored **directly in kHz** — X, K, Ka each have records.
+  **`tools/r7_bands.py setfreq`** moves a band's window (re-encodes key 184, round-trip-verified),
+  and `dump` lists the table. Full guide: **[BAND_FILTERING.md](BAND_FILTERING.md)**,
+  [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2.6. *Caveat: records are shared across modes, so one edit
+  affects every mode that uses that band.* (The 20-byte sweep-schedule records @ §2.2 point into this
+  table; `band_type`/`ifconst` are hardware-coupled — don't touch them.)
 - **code-patch (logic):** the BSEL band-mux handler, the tuner/PLL programmers' math, the band-enable
   applier engines (`FUN_0x5788`/`0x5416`), adding a **new** Ka segment beyond the 9 (needs the `tbb`
   tables + mask + record-count constants widened), or gating which band-selector applies a record.
@@ -178,7 +178,7 @@ silicon/base-address mismatch at worst**. Leave them alone. See [FIRMWARE_MAP.md
 | Scan animation colors/tiles | data-edit | [SCAN_ANIMATION.md](SCAN_ANIMATION.md) |
 | Scan animation *motion* | data-edit (untooled) | LZSS `.data` framedata — needs a packer |
 | Add/remove cameras or POIs | data-edit | [GPS_DATABASE.md](GPS_DATABASE.md) |
-| Shift a band/Ka sweep frequency | data-edit (expert) | dsp_nu sweep tables ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2.2) |
+| Move an X/K/Ka detection frequency | data-edit (expert) | `r7_bands.py` ([BAND_FILTERING.md](BAND_FILTERING.md)) |
 | Turn an existing Ka segment on/off | runtime-config | on-device "Ka Segmentation" menu |
 | A current setting (theme, filters, quota) | runtime-config | on-device menu (EEPROM, not the `.bin`) |
 | A power-on/factory default | code-patch | `FUN_0x1d29c` immediates |
