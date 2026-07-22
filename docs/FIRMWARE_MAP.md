@@ -580,9 +580,28 @@ independently reproducing the table's declared length.
 Nuvoton Cortex-M4F (smaller part — 64 IRQs, ~16 KB SRAM). Initial SP `0x20003d38`, reset `0x174`,
 80-entry vector table (`0x0`–`0x140`), default handler `0x1b9`. Named IRQs: IRQ36→`0xa69` (UART0),
 IRQ37→`0xb81` (UART1) — matches gps_nu's heavy UART0/UART1 use. Splice at container `0x4ba2a`.
+`.data`/`.bss` init at reset; entropy ~6.0–6.6 (dense Thumb code; no large data tables).
 
-This section had no deeper region breakdown among the findings beyond the boot/vector structure
-above (the GPS *database* is a separate `GPSD:LRDB` section, §5 — not part of this MCU image).
+**Role — GPS-receiver front-end + UART router**  ·  confidence: high
+
+| Item | Offset | What it is |
+|---|---|---|
+| NMEA `RMC` id | `0x3a5c` | parses `$G_RMC` (position / velocity / time / date) |
+| NMEA `GGA` id | `0x3bf8` | parses `$G_GGA` (fix quality, altitude, satellites) |
+| `at$uart0=ui` | `0x9d60` | AT command: route UART0 to the **main MCU (UI)** |
+| `at$uart0=gps` | `0x9d6c` | AT command: route UART0 to the **GPS module** |
+| `HDT` | `0x9b05` | true-heading handling |
+
+`gps_nu` reads the serial GPS module, parses NMEA sentences into a fix (lat/lon/speed/heading/time),
+and **muxes UART0** between the GPS module, the main MCU, and the external port — which is how the
+GPS stream and the update/debug serial share one physical line (the `at$uart0=…` commands switch it).
+It is a **data provider**: it does *not* hold the camera database, the GPS auto-lockout state, or the
+alert logic — those live in the **main MCU** (`ui_nu`) which consumes the fix `gps_nu` produces.
+
+**Editability:** almost entirely **code-patch** (the NMEA parser, UART mux, and framing are Thumb
+code) and **low user value** — it's GPS plumbing, not a feature surface. No large data tables to swap;
+any behavior change (e.g. accepting a different GPS baud/sentence set) is an ARM-code edit. The GPS
+*database* is the separate `GPSD:LRDB` section (§5), which is fully data-editable.
 
 ---
 
