@@ -1,41 +1,63 @@
 #!/usr/bin/env python3
 """
-Uniden R7 sound_dbnu decoder / clip extractor / re-encoder.
+Uniden R7 sound_dbnu decoder / clip extractor.
 
-FORMAT (reverse-engineered here):
-  After the container transform (decode_old_model, key 255), the sound_dbnu
-  payload is RAW 8-bit SIGNED PCM, mono, 1 byte == 1 sample. There is NO
-  internal table-of-contents, no per-clip header, and no codec framing --
-  it is a flat concatenation of clips. Silence is the constant byte 0xE2
-  (the DAC resting level, ~ -30 signed). The used content runs from offset
-  0x000000 to 0x1F3A35; the tail (0x1F3A35..end) is 0xE1 flash padding.
+WHAT THIS SECTION ACTUALLY IS (reverse-engineered here; supersedes the earlier
+"8-bit signed PCM" theory, which was derived from the WRONG container key):
 
-  Clips are packed back-to-back separated only by short (<=~80 byte) quiet
-  runs, so clip boundaries are recovered by silence segmentation (a heuristic,
-  not an exact directory). Sample rate is not stored in the blob; 16000 Hz is
-  the working assumption (override with --rate).
+  sound_dbnu is a **Nuvoton ISD3800 ChipCorder flash image**. On the R7 mainboard
+  a dedicated ISD3800 (marked "3800") reads this bank out of the Winbond SPI flash,
+  decodes it IN HARDWARE, and drives the speaker via Class-D PWM. The Nuvoton NUC442
+  main MCU only issues "play voice-prompt N" SPI commands -- so the audio codec is
+  NOT in any firmware code image, which is why no ADPCM step-tables live in ui/dsp/gps.
 
-WAV mapping is a loss-less bijection so extract->inject reproduces the firmware
-byte-for-byte:
-    wav_u8  = (fw_byte - 0xE2 + 128) & 0xFF     # silence -> 0x80 (clean-sounding)
-    fw_byte = (wav_u8  - 128 + 0xE2) & 0xFF
+  Container: the section is de-obfuscated with decode_old_model(key=**225**) -- NOT
+  255. Proof: key 225 yields a valid ISD3800 memory image (0xCX memory-header byte,
+  a 250-entry voice-prompt directory, 0xFF erased-flash padding, an ASCII build date);
+  every other key yields garbage.
+
+  Layout of the decoded section (ISD3800 memory image):
+    0x00        Memory header. Byte0 = 0xCX protection scheme (design guide Table 8-1).
+    0x17        First voice-prompt START address (u24 little-endian).
+    0x1A..      Voice-prompt directory: repeating (END_k, START_{k+1}) u24 LE pairs,
+                with START_{k+1} == END_k + 1, until the chain breaks. -> **250 clips**.
+    <clips>     Each clip: a short audio header (sample-rate + compression, set per
+                message) followed by the compressed audio body.
+    tail        0xFF erased-flash padding to the section end.
+
+  Codec: **4-bit ADPCM** (ISD3800 CFG0 default 0x64), IMA-style framing -- the standard
+  sign=MSB nibble reproduces the idle/silence pattern exactly, so clip boundaries and
+  silence decode correctly. BUT the exact predictor / step-adaptation table is
+  PROPRIETARY to the ISD3800 (in-chip ROM) and is NOT plain IMA: no reconstruction
+  tried here recovers clean speech (an LPC formant-gain check reads ~1.3 on real speech
+  vs ~0.05 == noise floor for every candidate decode). So `extract` below is BEST-EFFORT:
+  timing/silence are right, tonal content is still noisy. Getting bit-exact audio needs
+  either Nuvoton's ISD-VPE3800 Voice Prompt Editor (the official WAV<->flash tool) or one
+  confirmed clip<->word anchor to fit the full table. See docs/SOUND.md.
 
 Usage:
     python3 r7_sound.py info    <firmware.bin>
-    python3 r7_sound.py clips   <firmware.bin> [--gap N] [--min N]   # list segmented clips
-    python3 r7_sound.py extract <firmware.bin> <out_dir> [--rate R] [--gap N] [--min N]
-    python3 r7_sound.py wav     <firmware.bin> <start_hex> <len> <out.wav> [--rate R]
-    python3 r7_sound.py inject  <firmware.bin> <start_hex> <in.wav>  <out.bin>   # in place, len preserved
-    python3 r7_sound.py verify  <firmware.bin>                       # 0-diff round trip
+    python3 r7_sound.py clips   <firmware.bin>                     # list the 250 voice prompts
+    python3 r7_sound.py extract <firmware.bin> <out_dir> [--rate R]  # best-effort WAV + raw .adpcm
+    python3 r7_sound.py raw     <firmware.bin> <out.bin>           # dump the decoded ISD3800 image
 """
-import sys, os, struct, wave
+import sys, os, wave
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from r7_unpack import decode_old_model, encode_old_model, parse
+from r7_unpack import decode_old_model, parse
 
-SOUND_KEY = 255
-SILENCE   = 0xE2          # DAC resting byte
-PAD       = 0xE1          # flash padding byte in tail
-DEF_RATE  = 16000
+SOUND_KEY = 225           # correct container key for sound_dbnu (NOT 255)
+PAD       = 0xFF          # erased-flash padding byte in the decoded image
+DEF_RATE  = 16000         # ISD3800 sample rate is per-message; 16k is a working default
+
+# IMA-89 step table (ISD3800 uses IMA-style framing; the exact table is proprietary,
+# so decoded tone is approximate -- see module docstring).
+IMA_STEP = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,
+            97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,
+            658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,
+            3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,
+            13899,15289,16818,18500,20350,22385,24623,27086,29794,32767]
+IMA_IDX  = [-1,-1,-1,-1,2,4,6,8]
+
 
 def sound_span(buf):
     for f in parse(buf):
@@ -43,137 +65,126 @@ def sound_span(buf):
             return f['offset'], f['length']
     raise SystemExit("sound_dbnu not found")
 
-def load_pcm(buf):
-    off, length = sound_span(buf)
-    return bytearray(decode_old_model(SOUND_KEY, buf[off:off+length])), off, length
 
-def content_end(pcm):
-    i = len(pcm)
-    while i > 0 and pcm[i-1] == PAD:
+def load_image(buf):
+    """Return the de-obfuscated ISD3800 memory image (decode key 225)."""
+    off, length = sound_span(buf)
+    return bytearray(decode_old_model(SOUND_KEY, buf[off:off + length])), off, length
+
+
+def u24(b, i):
+    return b[i] | b[i + 1] << 8 | b[i + 2] << 16
+
+
+def content_end(img):
+    i = len(img)
+    while i > 0 and img[i - 1] == PAD:
         i -= 1
     return i
 
-def segment(pcm, end, gap=40, minlen=256):
-    """Split [0,end) into clips at quiet runs (bytes in {E1,E2,E3}) of >= `gap`."""
-    quiet = (PAD, SILENCE, 0xE3)
-    runs = []           # (start,len) of quiet runs >= gap
-    i = 0
-    while i < end:
-        if pcm[i] in quiet:
-            j = i
-            while j < end and pcm[j] in quiet:
-                j += 1
-            if j - i >= gap:
-                runs.append((i, j - i))
-            i = j
-        else:
-            i += 1
-    clips = []
-    prev = 0
-    for s, l in runs:
-        if s - prev >= minlen:
-            clips.append((prev, s - prev))
-        prev = s + l
-    if end - prev >= minlen:
-        clips.append((prev, end - prev))
-    return clips
 
-def wav_bytes_from_fw(chunk):
-    return bytes((b - SILENCE + 128) & 0xFF for b in chunk)
+def voice_prompts(img):
+    """Parse the ISD3800 voice-prompt directory -> list of (start, end) clip spans.
 
-def fw_bytes_from_wav(chunk):
-    return bytes((b - 128 + SILENCE) & 0xFF for b in chunk)
+    Directory: first START at 0x17, then (END_k, START_{k+1}) u24 pairs from 0x1A with
+    START_{k+1} == END_k + 1, until the chain breaks."""
+    starts = [u24(img, 0x17)]
+    ends = []
+    i = 0x1A
+    while i + 6 <= len(img) and u24(img, i) + 1 == u24(img, i + 3):
+        ends.append(u24(img, i))
+        starts.append(u24(img, i + 3))
+        i += 6
+    ends.append(u24(img, i))
+    return list(zip(starts, ends))
 
-def write_wav(path, fw_chunk, rate):
+
+def adpcm_decode(payload, header=2):
+    """BEST-EFFORT 4-bit ADPCM decode (IMA-style; tone is approximate -- see docstring).
+    Skips a short per-message audio header, then low-nibble-first IMA over the body."""
+    body = payload[header:]
+    out = []
+    pred = 0
+    idx = 0
+    for byte in body:
+        for nib in (byte & 0x0F, byte >> 4):        # low nibble first
+            step = IMA_STEP[idx]
+            mag = nib & 7
+            diff = step >> 3
+            if mag & 4: diff += step
+            if mag & 2: diff += step >> 1
+            if mag & 1: diff += step >> 2
+            pred += -diff if (nib & 8) else diff     # sign = MSB (correct for silence)
+            pred = max(-32768, min(32767, pred))
+            idx = max(0, min(88, idx + IMA_IDX[mag]))
+            out.append(pred)
+    return out
+
+
+def write_wav(path, samples, rate):
+    import struct
     w = wave.open(path, 'wb')
-    w.setnchannels(1); w.setsampwidth(1); w.setframerate(rate)
-    w.writeframes(wav_bytes_from_fw(fw_chunk))
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+    w.writeframes(b''.join(struct.pack('<h', s) for s in samples))
     w.close()
 
-def read_wav_as_fw(path):
-    w = wave.open(path, 'rb')
-    assert w.getnchannels() == 1 and w.getsampwidth() == 1, "need mono 8-bit WAV"
-    data = w.readframes(w.getnframes()); w.close()
-    return fw_bytes_from_wav(data)
 
 def cmd_info(fw):
     buf = open(fw, 'rb').read()
-    pcm, off, length = load_pcm(buf)
-    end = content_end(pcm)
+    img, off, length = load_image(buf)
+    end = content_end(img)
+    clips = voice_prompts(img)
     print(f"sound_dbnu file@0x{off:x} len={length} (0x{length:x})")
-    print(f"codec: 8-bit signed PCM, mono, silence=0x{SILENCE:02x}")
-    print(f"content 0x000000..0x{end:06x} ({end} bytes), padding 0x{PAD:02x} for {length-end} bytes")
-    print(f"duration @16k={end/16000:.1f}s  @8k={end/8000:.1f}s")
+    print(f"format: Nuvoton ISD3800 ChipCorder flash image (decode key {SOUND_KEY})")
+    print(f"memory-header byte0 = 0x{img[0]:02x} (ISD3800 0xCX protection scheme)")
+    print(f"codec: 4-bit ADPCM, decoded in the ISD3800 hardware (see docs/SOUND.md)")
+    print(f"voice prompts (directory): {len(clips)} clips")
+    print(f"content 0x000000..0x{end:06x} ({end} bytes), 0xFF padding for {length - end} bytes")
 
-def cmd_clips(fw, gap, minlen):
-    buf = open(fw, 'rb').read()
-    pcm, off, length = load_pcm(buf)
-    end = content_end(pcm)
-    clips = segment(pcm, end, gap, minlen)
-    print(f"{len(clips)} clips (gap>={gap}, min>={minlen}):")
-    for i, (s, l) in enumerate(clips):
-        print(f"  [{i:3d}] 0x{s:06x} len {l:6d}  ~{l/16000*1000:5.0f}ms@16k")
 
-def cmd_extract(fw, outdir, rate, gap, minlen):
+def cmd_clips(fw):
     buf = open(fw, 'rb').read()
-    pcm, off, length = load_pcm(buf)
-    end = content_end(pcm)
-    clips = segment(pcm, end, gap, minlen)
+    img, _, _ = load_image(buf)
+    clips = voice_prompts(img)
+    print(f"{len(clips)} voice prompts (ISD3800 directory):")
+    for i, (s, e) in enumerate(clips):
+        print(f"  [{i:3d}] 0x{s:06x}..0x{e:06x}  len {e - s + 1:6d}")
+
+
+def cmd_extract(fw, outdir, rate):
+    buf = open(fw, 'rb').read()
+    img, _, _ = load_image(buf)
+    clips = voice_prompts(img)
     os.makedirs(outdir, exist_ok=True)
-    for i, (s, l) in enumerate(clips):
-        write_wav(os.path.join(outdir, f"clip_{i:03d}_0x{s:06x}_{l}.wav"), pcm[s:s+l], rate)
-    print(f"extracted {len(clips)} clips -> {outdir}/ ({rate} Hz)")
+    for i, (s, e) in enumerate(clips):
+        payload = bytes(img[s:e + 1])
+        open(os.path.join(outdir, f"clip_{i:03d}_0x{s:06x}.adpcm"), 'wb').write(payload)
+        write_wav(os.path.join(outdir, f"clip_{i:03d}_0x{s:06x}.wav"), adpcm_decode(payload), rate)
+    print(f"extracted {len(clips)} clips -> {outdir}/  (raw .adpcm + BEST-EFFORT .wav @ {rate} Hz)")
+    print("NOTE: .wav tone is approximate -- the ISD3800 ADPCM predictor is proprietary; "
+          "silence/timing are correct. See docs/SOUND.md.")
 
-def cmd_wav(fw, start, ln, out, rate):
-    buf = open(fw, 'rb').read()
-    pcm, off, length = load_pcm(buf)
-    write_wav(out, pcm[start:start+ln], rate)
-    print(f"wrote {out}  ({ln} samples @ {rate} Hz)")
 
-def cmd_inject(fw, start, inwav, out):
+def cmd_raw(fw, out):
     buf = open(fw, 'rb').read()
-    off, length = sound_span(buf)
-    pcm = bytearray(decode_old_model(SOUND_KEY, buf[off:off+length]))
-    new = read_wav_as_fw(inwav)
-    region_len = None
-    # replace exactly len(new) bytes at start, but never grow the section
-    if start + len(new) > length:
-        raise SystemExit("replacement runs past section end")
-    pcm[start:start+len(new)] = new
-    enc = encode_old_model(SOUND_KEY, bytes(pcm))
-    assert len(enc) == length
-    open(out, 'wb').write(buf[:off] + enc + buf[off+length:])
-    print(f"injected {len(new)} bytes at 0x{start:x} -> {out} (section length preserved)")
+    img, _, _ = load_image(buf)
+    open(out, 'wb').write(bytes(img))
+    print(f"wrote decoded ISD3800 image ({len(img)} bytes) -> {out}")
 
-def cmd_verify(fw):
-    buf = open(fw, 'rb').read()
-    off, length = sound_span(buf)
-    pcm = decode_old_model(SOUND_KEY, buf[off:off+length])
-    reenc = encode_old_model(SOUND_KEY, pcm)
-    rebuilt = buf[:off] + reenc + buf[off+length:]
-    same = rebuilt == buf
-    # also test wav bijection on a chunk
-    chunk = pcm[0x1000:0x2000]
-    bij = fw_bytes_from_wav(wav_bytes_from_fw(chunk)) == chunk
-    print(f"decode->encode round trip: {'0 DIFF OK' if same else 'DIFFERS'}")
-    print(f"wav<->fw byte bijection:   {'OK' if bij else 'BROKEN'}")
-    return same and bij
 
 def main():
     a = sys.argv
     if len(a) < 3:
         print(__doc__); sys.exit(1)
-    def opt(name, default, cast=int):
-        return cast(a[a.index(name)+1]) if name in a else default
-    rate = opt('--rate', DEF_RATE); gap = opt('--gap', 40); minlen = opt('--min', 256)
+    rate = int(a[a.index('--rate') + 1]) if '--rate' in a else DEF_RATE
     cmd = a[1]
     if   cmd == 'info':    cmd_info(a[2])
-    elif cmd == 'clips':   cmd_clips(a[2], gap, minlen)
-    elif cmd == 'extract': cmd_extract(a[2], a[3], rate, gap, minlen)
-    elif cmd == 'wav':     cmd_wav(a[2], int(a[3], 16), int(a[4]), a[5], rate)
-    elif cmd == 'inject':  cmd_inject(a[2], int(a[3], 16), a[4], a[5])
-    elif cmd == 'verify':  sys.exit(0 if cmd_verify(a[2]) else 1)
-    else: print(__doc__); sys.exit(1)
+    elif cmd == 'clips':   cmd_clips(a[2])
+    elif cmd == 'extract': cmd_extract(a[2], a[3], rate)
+    elif cmd == 'raw':     cmd_raw(a[2], a[3])
+    else:
+        print(__doc__); sys.exit(1)
+
 
 if __name__ == '__main__':
     main()

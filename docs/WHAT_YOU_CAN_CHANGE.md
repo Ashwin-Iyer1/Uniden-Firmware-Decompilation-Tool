@@ -153,12 +153,15 @@ Band filtering lives in `dsp_nu`. There are **two** halves:
 - The MMIO peripheral map, memory map, and the fact that flashing is done by the Nuvoton **LDROM
   bootloader** (the app images don't self-program flash): **not-editable** (silicon/bootloader-gated).
 
-### Voice / alert audio  →  data-edit  ·  `r7_sound.py`  ·  SAFE
+### Voice / alert audio  →  extract-only (for now)  ·  `r7_sound.py`
 
-`sound_dbnu` decodes (key 255) to **raw 8-bit signed PCM, mono** (silence = `0xE2`), ~23 voice clips.
-Extract clips to WAV, edit, and inject a same-length replacement in place — round-trip verified
-0-diff. Full how-to: **[SOUND.md](SOUND.md)**. Keep the byte length constant (pad/trim with silence).
-(`STSD` is the STM32 sibling's bank — leave it alone.)
+`sound_dbnu` decodes (key **225**, not 255) to a **Nuvoton ISD3800 ChipCorder flash image** — a
+`0xCX` memory header + a **250-entry voice-prompt directory** + **4-bit ADPCM** clips (decoded in
+the R7's dedicated ISD3800 chip, not in firmware). `r7_sound.py` lists the 250 clips and extracts
+raw `.adpcm` + a **best-effort** WAV (silence/timing correct, tone still noisy — the ISD3800's ADPCM
+predictor is proprietary). **Editing** needs an ISD3800 encoder (Nuvoton's ISD-VPE tool), or one
+confirmed clip→word anchor to finish the codec — a WAV cannot be injected as raw bytes. Full
+write-up: **[SOUND.md](SOUND.md)**. (`STSD` is the STM32 sibling's bank — leave it alone.)
 
 ### The ST\* STM32 images  →  not-editable *for an R7*  ·  DO NOT FLASH
 
