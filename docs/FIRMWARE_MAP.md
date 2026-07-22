@@ -29,7 +29,7 @@ A complete, region-by-region map of the Uniden R7 combined firmware image, rever
 | 1 | **ui_nu** (DRSWMAI) | `0x000018` | 195072 | 182 | Main MCU — UI, menus, display, graphics, fonts, strings |
 | 2 | **dsp_nu** (DRSWDSP) | `0x02fa21` | 114688 | 184 | DSP MCU — RF sweep, band logic, serial console |
 | 3 | **gps_nu** (DRSWSUB) | `0x04ba2a` | 40960 | 183 | Sub/GPS MCU |
-| 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | 255 | voice / alert audio — raw 8-bit signed PCM (editable, §4) |
+| 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | **225** | voice / alert audio — Nuvoton ISD3800 flash image, 4-bit ADPCM (§4) |
 | 5 | **GPSD:LRDB** | `0x255a46` | ~204 KB | 210 | camera / POI database |
 | 6 | STUI / STDS / STGP / STSD | `0x288a65`+ | — | 182/184/183/255 | parallel STM32 image set (not run by the R7) |
 | — | NMGF footer | `0x4e26a4` | 12 B | plain | merge marker; file ends at NMGF+12 |
@@ -629,14 +629,18 @@ database itself** (`GPSD:LRDB`, §5) is fully data-editable; the **GPS auto-lock
 
 ---
 
-## 4. sound_dbnu — voice / alert audio (key 255)
+## 4. sound_dbnu — voice / alert audio (key 225, ISD3800 image)
 
-File `0x055a33`, ~2 MB fixed slot. After `decode_old_model(255, …)` the payload is **raw 8-bit
-*signed* PCM, mono** (1 byte = 1 sample) — **no TOC, no codec**. Silence = constant byte `0xE2`
-(≈ −30). Content runs `0x000000`–`0x1f3a35` (~2.05 MB) then `0xE1` padding; ~128 s @16 kHz. The
-stream splits into ~23 silence-delimited **voice clips**. **editable: data-edit** — extract clips to
-WAV, edit, inject back in place (same byte length), round-trip verified 0-diff. Tool `r7_sound.py`;
-guide [SOUND.md](SOUND.md). Presence gated by header flag bit0 (§0.1), described by the SNDD record.
+File `0x055a33`, ~2 MB fixed slot. **Not PCM** — it is a **Nuvoton ISD3800 ChipCorder flash image**
+(the R7 has a dedicated ISD3800 voice chip that reads this bank from the Winbond SPI flash, decodes
+**4-bit ADPCM** in hardware, and drives the speaker via Class-D PWM; the NUC442 only sends "play
+prompt N"). Decode with `decode_old_model(**225**, …)` — **not 255** (255 was the wrong key behind
+the retracted "8-bit PCM" theory). The decoded image is: a `0xCX` **memory header** (`0xcf`), then a
+**250-entry voice-prompt directory** (`(END,START)` u24-LE pairs from `0x1A`, first START at `0x17`),
+the compressed clips, then `0xFF` padding (content ends `0x1f3a35` on v153). Silence/timing decode
+correctly; the exact ADPCM predictor is **proprietary (in-chip), not yet bit-exact** — `r7_sound.py`
+extracts raw `.adpcm` + best-effort WAV, and bit-exact edits need Nuvoton's ISD-VPE tool. Guide
+[SOUND.md](SOUND.md). Presence gated by header flag bit0 (§0.1), described by the SNDD record.
 (`STSD` is the STM32 sibling's voice bank — irrelevant to R7.)
 
 ---
