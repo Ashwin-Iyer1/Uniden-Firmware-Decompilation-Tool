@@ -20,6 +20,10 @@ anim/
 *.rep
 *.lock
 
+# R8 analysis scratch (finished tools graduate to tools/, notes to docs/)
+r8_work/
+prior-art/
+
 # Python
 __pycache__/
 *.pyc
