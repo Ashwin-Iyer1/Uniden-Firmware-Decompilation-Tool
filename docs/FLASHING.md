@@ -1,5 +1,9 @@
 # Flashing & recovery
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 > **Flashing modified firmware can brick your detector.** Read this whole page first. The single
 > most important rule: **keep an untouched copy of your stock firmware.**
 
@@ -11,7 +15,7 @@
    baseline to fall back to.
 3. **Sanity-check your modified file** before it ever touches the device:
    ```sh
-   python3 tools/r7_unpack.py parse yourmod.bin      # all sections must still parse
+   python3 tools/rseries_unpack.py parse yourmod.bin      # all sections must still parse
    ```
    For a GPS-only or graphics-only edit, every *other* section should be byte-identical to stock —
    the per-capability guides show how to confirm that.

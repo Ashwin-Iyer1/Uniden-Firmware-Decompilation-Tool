@@ -1,4 +1,4 @@
-# Runtime dependency for the graphics/scan tools (r7_gfx.py, r7_scan.py).
+# Runtime dependency for the graphics/scan tools (rseries_gfx.py, rseries_scan.py).
 # The container/GPS/patch tools use only the Python standard library.
 Pillow>=9.0
 

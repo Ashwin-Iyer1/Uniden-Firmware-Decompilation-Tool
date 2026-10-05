@@ -1,17 +1,109 @@
-# Uniden R7 Firmware Toolkit
+# Uniden R-series Firmware Toolkit
 
-Open tools for **decoding, editing, and re-packing Uniden R7 radar-detector firmware** — so you
-can customize your *own* detector: edit menu/display text, swap the boot logo and other bitmaps,
-build a custom GPS/red-light-camera database, and even edit the idle "Scan" animation.
+Tools for inspecting **Uniden R7, R4W and R8W** firmware updates. The toolkit
+extracts their components, reports model and version metadata, and reproduces
+an unchanged update byte-for-byte. It also decodes and edits the documented R7
+images and validates the ESP32-C3 wireless images in R4W/R8W updates.
 
-Every tool round-trips **byte-for-byte** (decode → re-encode reproduces the original firmware
-exactly), so any change you make is precisely and only your change.
+## Model support
 
-> Reverse-engineered from firmware **`R7_v153.150.127`**. The *methods* are general to the Uniden
-> R-series; the *specific offsets* baked into the tools are for that version (see
-> [Firmware versions](#firmware-versions)).
+| Operation | R7 | R4W v127.128.123 | R8W v142.113.127 |
+|---|---|---|---|
+| Container inspection and raw extraction | Supported | Supported | Supported |
+| Unchanged extraction/repack | Supported | Verified on stock image | Verified on stock image |
+| Main / DSP / GPS decoding | Legacy transform supported | Unresolved | Unresolved |
+| Wireless ESP image extraction and checksum validation | No BLES fixture supplied | Verified | Verified |
+| Camera database editing | Legacy DB formats | AES format; no decoder | AES format; no decoder |
+| Text, graphics, scan and band edits | Documented R7 version only | Unsupported | Unsupported |
+| Verified hidden diagnostics / key combinations | See R7-specific guides | None established | None established |
 
----
+**R-series tool names describe the toolkit, not universal editing support.**
+The editors reject R4W/R8W before modifying output. R7 keys and feature offsets
+must not be applied to wireless models. Start with [R4W/R8W support](docs/R4W_R8W.md)
+and [firmware findings](docs/FIRMWARE_FINDINGS.md) for those models.
+
+## Quick start: R7, R4W or R8W
+
+Python 3.9+ is sufficient for these commands; firmware is supplied by you.
+
+```sh
+git clone https://github.com/klinquist/Uniden-Firmware-Decompilation-Tool.git
+cd Uniden-Firmware-Decompilation-Tool
+python3 tools/rseries.py inspect /path/to/R8W_v142.113.127_db260702.bin
+python3 tools/rseries.py inspect /path/to/R4W_v127.128.123_db260702.bin --json
+python3 tools/rseries.py extract /path/to/R8W_v142.113.127_db260702.bin decoded/r8w
+python3 tools/rseries.py repack decoded/r8w /tmp/r8w-reproduced.bin
+```
+
+Use an empty extraction directory and a new output filename. Repacking verifies
+all original bytes against the source SHA256; it rejects modified pieces.
+Supported decodings and wireless segments are exported separately for analysis.
+Download your stock image from the [official Uniden software site](https://www.uniden.info/download/index.cfm)
+and retain the untouched original. Firmware and extracted assets are excluded
+from this repository.
+
+## Tools and guides
+
+Canonical commands use `rseries_*.py`. Existing `r7_*.py` commands and public
+imports remain compatibility aliases with the same model restrictions.
+
+| Capability | Tool | Applicability / guide |
+|---|---|---|
+| Inspect, extract and reproduce updates | `rseries.py` | R7 / R4W / R8W: [format](docs/FORMAT.md), [wireless models](docs/R4W_R8W.md) |
+| Parse containers / legacy transforms | `rseries_unpack.py` | Container: all three; decoding: supported legacy sections |
+| Compare block patterns and decoding hypotheses | `rseries_probe.py` | All three: [findings](docs/FIRMWARE_FINDINGS.md) |
+| Menu / display text | `rseries_patch.py` | R7: [text](docs/TEXT.md) |
+| Boot logo and bitmaps | `rseries_gfx.py` | R7: [graphics](docs/GRAPHICS.md) |
+| Camera database | `rseries_gpsdb.py` | R7 legacy DB: [GPS database](docs/GPS_DATABASE.md) |
+| Idle scan animation | `rseries_scan.py` | R7: [scan animation](docs/SCAN_ANIMATION.md) |
+| Band frequency windows | `rseries_bands.py` | R7: [band filtering](docs/BAND_FILTERING.md) |
+| Voice / alert audio | `rseries_sound.py` | R7: [sound](docs/SOUND.md) |
+| DSP serial frame codec | `rseries_ipc.py` | R7 protocol: [DSP messages](docs/DSP_PROTOCOL.md) |
+| UI/GPS link codec | `rseries_iplink.py` | R7 analysis; W-model protocol unverified |
+| Camera alert simulation | `rseries_alertsim.py` | R7 GPS matcher; W-model behavior unverified |
+| `.data` compression | `rseries_lzss.py` | R7 LZSS; W-model codec unverified |
+
+Each engineering guide identifies its model scope. [Firmware map](docs/FIRMWARE_MAP.md)
+and [what you can change](docs/WHAT_YOU_CAN_CHANGE.md) describe the decoded R7
+image; the [wireless-model map](docs/R4W_R8W.md#verified-component-map) supplies
+separate R4W/R8W offsets. [Setup](docs/SETUP.md), [flashing](docs/FLASHING.md) and
+[reverse engineering](docs/REVERSE_ENGINEERING.md) retain the established R7
+procedures; those procedures do not establish a custom W-model flashing workflow.
+
+## R7 editing example
+
+The documented editing offsets come from `R7_v153.150.127`. They may move in
+other versions. Graphics and scan tools require Pillow (`pip install -r requirements.txt`).
+
+```sh
+python3 tools/rseries_patch.py showstr R7_v153.150.127_db260702.bin ui_nu 0x2268
+python3 tools/rseries_patch.py setstr R7_v153.150.127_db260702.bin ui_nu 0x2268 "YOUR NAME" out.bin
+python3 tools/rseries_scan.py verify R7_v153.150.127_db260702.bin
+```
+
+Read the model-specific guides before editing or flashing.
+
+## Validation and contributing
+
+```sh
+python3 -m unittest discover -s tests -v
+# Optional: exact stock R4W/R8W integration checks, with files outside the repo.
+UNIDEN_FIRMWARE_DIR=/path/to/firmware python3 -m unittest discover -s tests -v
+```
+
+CI uses synthetic fixtures and does not redistribute firmware. Contributions
+should state model, version and evidence; distinguish validated decoders from
+hypotheses. See [firmware findings](docs/FIRMWARE_FINDINGS.md) for the completed
+offline checks and their limits.
+
+## Repository layout
+
+```text
+tools/     R-series CLI tools and legacy r7_* compatibility entry points
+docs/      shared format, separate R4W/R8W support, research, R7-specific guides
+tests/     synthetic regression tests and optional local stock-image checks
+examples/  clean templates (e.g. a GPS-database CSV)
+```
 
 ## ⚠️ Read this first — safety, legality, warranty
 
@@ -31,122 +123,6 @@ exactly), so any change you make is precisely and only your change.
 This project is unaffiliated with and unendorsed by Uniden.
 
 ---
-
-## What you can change
-
-| Capability | Tool | Guide |
-|---|---|---|
-| **Menu / display text** (rename items, add owner name/email) | `r7_patch.py` | [docs/TEXT.md](docs/TEXT.md) |
-| **Boot logo & bitmaps** (replace the "Uniden" splash) | `r7_gfx.py` | [docs/GRAPHICS.md](docs/GRAPHICS.md) |
-| **GPS / camera database** (speed, red-light, custom points) | `r7_gpsdb.py` | [docs/GPS_DATABASE.md](docs/GPS_DATABASE.md) |
-| **"Scan" idle animation** (the sweeping bar) | `r7_scan.py` | [docs/SCAN_ANIMATION.md](docs/SCAN_ANIMATION.md) |
-| **RF band frequencies** (move X/K/Ka detection windows) | `r7_bands.py` | [docs/BAND_FILTERING.md](docs/BAND_FILTERING.md) |
-| **Voice / alert audio** (8-bit PCM clips) | `r7_sound.py` | [docs/SOUND.md](docs/SOUND.md) |
-| **Inspect / unpack the container** | `r7_unpack.py` | [docs/FORMAT.md](docs/FORMAT.md) |
-| **DSP serial messages** (band enables, Ka-segment mask — runtime, no reflash) | `r7_ipc.py` | [docs/DSP_PROTOCOL.md](docs/DSP_PROTOCOL.md) |
-
-Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
-
-**Want the complete picture?** [docs/WHAT_YOU_CAN_CHANGE.md](docs/WHAT_YOU_CAN_CHANGE.md) classifies
-*everything* in the firmware as data-edit / code-patch / runtime-config / not-editable, and
-[docs/FIRMWARE_MAP.md](docs/FIRMWARE_MAP.md) is the exhaustive region-by-region byte map.
-
-**Analysis utilities:** `r7_alertsim.py` (predict which cameras alert off-device — replicates the
-`gps_nu` directional/distance matcher), `r7_lzss.py` (the `.data` LZSS (de)compressor — unblocks scan
-*motion* edits), `r7_iplink.py` (the ui_nu↔gps_nu inter-MCU link codec).
-
----
-
-## Requirements
-
-- **Python 3.9+**
-- **Pillow** (only for the graphics/scan tools): `pip install -r requirements.txt`
-- A **micro-USB data cable** and the **Silicon Labs CP210x VCP driver** to talk to the detector
-  ([Silicon Labs downloads](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers)).
-- Optional, only if you want to re-run the reverse engineering: **Ghidra** + **capstone**
-  (see [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md)).
-
-```sh
-git clone <your-fork-url> && cd uniden-r7-toolkit
-python3 -m pip install -r requirements.txt
-```
-
-## Getting your firmware
-
-This repo does **not** include firmware. Obtain your own `.bin`:
-
-- Download from [Official Uniden Software Site](https://www.uniden.info/download/index.cfm)
-
-Keep the untouched original as your recovery image.
-
----
-
-## Quick start
-
-All commands are run from the repo root; pass your firmware path as the first argument.
-
-```sh
-# 1. See what's inside the container (sections, versions, keys)
-python3 tools/r7_unpack.py parse  R7_v153.150.127_db260702.bin
-
-# 2. Change on-screen text — e.g. put your name in the "Self Test" slot
-python3 tools/r7_patch.py showstr R7_v153.150.127_db260702.bin ui_nu 0x2268
-python3 tools/r7_patch.py setstr  R7_v153.150.127_db260702.bin ui_nu 0x2268 "YOUR NAME" out.bin
-
-# 3. Replace the boot logo with a custom 176x60 image
-python3 tools/r7_gfx.py render   R7_v153.150.127_db260702.bin 0x2d526 176 60 2bpp logo.png   # see current
-python3 tools/r7_gfx.py replace  R7_v153.150.127_db260702.bin 0x2d526 176 60 2bpp mylogo.png out.bin
-
-# 4. Add a camera to the GPS database (auto-sorted, resized, dated)
-python3 tools/r7_gpsdb.py export R7_v153.150.127_db260702.bin cameras.csv
-python3 tools/r7_gpsdb.py add    R7_v153.150.127_db260702.bin out.bin 32.9201 -97.1307 45   # speed cam
-
-# 5. Pull the Scan animation and prove the round-trip is loss-less
-python3 tools/r7_scan.py pull    R7_v153.150.127_db260702.bin scan_pull/
-python3 tools/r7_scan.py verify  R7_v153.150.127_db260702.bin      # -> "0 DIFF"
-```
-
-Then **flash** the `out.bin` you produced — see [docs/FLASHING.md](docs/FLASHING.md) (and its
-recovery section) **before** you do.
-
----
-
-## How the firmware is structured (the short version)
-
-The `.bin` is a container of named sections (`ui_nu` = Main MCU / UI, `dsp_nu` = DSP, `gps_nu` =
-Sub/GPS, `sound_dbnu` = audio, `LRDB` = camera DB, plus R8/R4 `STxx` images). Each payload is
-obfuscated with a **2-bit-plane transpose across every 4-byte group, then a per-section subtract
-key** — a pure bijection, *not* encryption. Decoding the three code sections yields **ARM
-Cortex-M** images. Full details, keys, and memory maps: **[docs/FORMAT.md](docs/FORMAT.md)**.
-
-There is **no whole-image checksum** on the code sections, and the R7's bootloader Recovery Mode
-can restore a bad flash — which is what makes safe experimentation practical.
-
-## Firmware versions
-
-The decode/encode math is version-independent, but tools that target a *feature* hard-code offsets
-found in **`R7_v153.150.127`** (boot logo `0x2d526`, self-test string `0x2268`, scan tiles
-`0x29b6e`, …). On a different firmware version these move. `r7_unpack.py parse` still works on any
-R-series image; to re-locate feature offsets on another version, follow
-[docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md). PRs adding a version→offsets table are
-very welcome.
-
-## Repository layout
-
-```
-tools/     the CLIs — editing: r7_patch r7_gfx r7_gpsdb r7_scan r7_bands r7_sound;
-           container: r7_unpack; analysis: r7_alertsim r7_lzss r7_iplink
-docs/      guides: FORMAT, SETUP, FLASHING; per-capability (TEXT, GRAPHICS, GPS_DATABASE,
-           SCAN_ANIMATION, BAND_FILTERING, SOUND); FIRMWARE_MAP + WHAT_YOU_CAN_CHANGE;
-           REVERSE_ENGINEERING
-examples/  clean templates (e.g. a GPS-database CSV)
-```
-
-## Contributing
-
-Issues and PRs welcome — especially other firmware versions' offsets, additional R-series models,
-and more decoded display/menu structures. See [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md)
-for the methodology and the Ghidra workflow used here.
 
 ## License & attribution
 

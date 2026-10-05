@@ -1,7 +1,11 @@
 # Editing the GPS / camera database
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 The R7's camera database (`LRDB`, US "old" format) is fully editable — add speed cameras, red-light
-cameras, and custom alert points from any source. `r7_gpsdb.py` handles decode, encode, sorting,
+cameras, and custom alert points from any source. `rseries_gpsdb.py` handles decode, encode, sorting,
 padding, the POI count, and the date automatically.
 
 ## Record format (16 bytes, decoded)
@@ -20,15 +24,15 @@ heading u16      approach direction, 0–360 (360 = any direction)
 
 Key facts: **POI count** is stored (encoded) in the footer, there is **no checksum**, the body is
 `0xFF`-padded to a 512-byte boundary, and records **must be sorted by latitude, descending** (the
-device looks up nearby points by latitude window). `r7_gpsdb.py` always re-sorts, so **CSV row
+device looks up nearby points by latitude window). `rseries_gpsdb.py` always re-sorts, so **CSV row
 order does not matter.**
 
-## Tool: `r7_gpsdb.py`
+## Tool: `rseries_gpsdb.py`
 
 ```
-python3 tools/r7_gpsdb.py export <fw> <out.csv>
-python3 tools/r7_gpsdb.py build  <in.csv> <template_fw> <out.bin> [YYYYMMDD]
-python3 tools/r7_gpsdb.py add    <fw> <out.bin> <lat> <lon> [speed] [category] [heading] [YYYYMMDD]
+python3 tools/rseries_gpsdb.py export <fw> <out.csv>
+python3 tools/rseries_gpsdb.py build  <in.csv> <template_fw> <out.bin> [YYYYMMDD]
+python3 tools/rseries_gpsdb.py add    <fw> <out.bin> <lat> <lon> [speed] [category] [heading] [YYYYMMDD]
 ```
 
 CSV columns: `lat, lon, type, speed, heading, f2, category` (`type` = `speed`|`redlight`). See
@@ -38,15 +42,15 @@ CSV columns: `lat, lon, type, speed, heading, f2, category` (`type` = `speed`|`r
 
 **Export → edit in a spreadsheet → rebuild:**
 ```sh
-python3 tools/r7_gpsdb.py export R7_v153.150.127_db260702.bin cameras.csv
+python3 tools/rseries_gpsdb.py export R7_v153.150.127_db260702.bin cameras.csv
 # ...edit cameras.csv (add/remove/modify rows, any order)...
-python3 tools/r7_gpsdb.py build cameras.csv R7_v153.150.127_db260702.bin R7_custom.bin
+python3 tools/rseries_gpsdb.py build cameras.csv R7_v153.150.127_db260702.bin R7_custom.bin
 ```
 
 **Add one point quickly** (speed given ⇒ speed camera; omit ⇒ red-light):
 ```sh
-python3 tools/r7_gpsdb.py add R7_v153.150.127_db260702.bin out.bin 32.9201 -97.1307 45   # speed, 45
-python3 tools/r7_gpsdb.py add R7_v153.150.127_db260702.bin out.bin 51.5074 -0.1278       # red-light
+python3 tools/rseries_gpsdb.py add R7_v153.150.127_db260702.bin out.bin 32.9201 -97.1307 45   # speed, 45
+python3 tools/rseries_gpsdb.py add R7_v153.150.127_db260702.bin out.bin 51.5074 -0.1278       # red-light
 ```
 
 ## Verify the edit
@@ -54,7 +58,7 @@ python3 tools/r7_gpsdb.py add R7_v153.150.127_db260702.bin out.bin 51.5074 -0.12
 ```sh
 python3 - <<'PY'
 import sys; sys.path.insert(0,'tools')
-from r7_unpack import parse
+from rseries_unpack import parse
 s=open('R7_v153.150.127_db260702.bin','rb').read(); n=open('R7_custom.bin','rb').read()
 for a,b in zip(parse(s),parse(n)):
     ra=s[a['offset']:a['offset']+a['length']]; rb=n[b['offset']:b['offset']+b['length']]

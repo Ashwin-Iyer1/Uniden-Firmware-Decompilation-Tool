@@ -1,5 +1,6 @@
-Uniden R7 Firmware Toolkit
+Uniden R-series Firmware Toolkit
 Copyright (C) 2026 the Uniden R7 Firmware Toolkit contributors
+R4W/R8W container support and R-series tooling added in this fork.
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License as published by the Free
@@ -27,7 +28,7 @@ location; the LZSS .data decompressor; and the Scan-animation format and tools.
 ────────────────────────────────────────────────────────────────────────────
 Not included / not affiliated
 ────────────────────────────────────────────────────────────────────────────
-"Uniden" and "R7" are trademarks of Uniden. This project is unaffiliated with
+"Uniden", "R7", "R4W" and "R8W" are trademarks of Uniden. This project is unaffiliated with
 and unendorsed by Uniden. It contains NO Uniden firmware, code, or extracted
 assets — users supply their own firmware image. Do not redistribute Uniden's
 copyrighted firmware or anything extracted from it.

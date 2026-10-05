@@ -1,5 +1,9 @@
 # The DSP serial protocol — band filtering without reflashing
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 The DSP MCU (`dsp_nu`) accepts a small set of **framed messages on its UART**. One of them,
 opcode `0x10`, is a complete radar configuration: which bands are enabled and **which of the nine
 Ka segments are swept**. The DSP applies it immediately.
@@ -7,7 +11,7 @@ Ka segments are swept**. The DSP applies it immediately.
 This matters because it is the one path to band filtering that is **not a firmware edit**. Nothing
 here reflashes anything — the settings live in RAM and are lost at reset.
 
-Tool: [`tools/r7_ipc.py`](../tools/r7_ipc.py) builds and decodes these frames.
+Tool: [`tools/rseries_ipc.py`](../tools/rseries_ipc.py) builds and decodes these frames.
 
 > **Not yet proven: whether you can reach this UART from outside the case.** See
 > [Reachability](#reachability) — read that before assuming any of this is usable over USB.
@@ -116,16 +120,16 @@ the nine-group path (`0x5788`) and no segment masking happens.
 
 ```sh
 # what the DSP will accept
-python3 tools/r7_ipc.py opcodes
+python3 tools/rseries_ipc.py opcodes
 
 # build a configuration frame: only Ka segments 1, 3 and 5 swept
-python3 tools/r7_ipc.py config --ka 1,3,5
+python3 tools/rseries_ipc.py config --ka 1,3,5
 
 # decode a captured frame (checksum verified, fields broken out)
-python3 tools/r7_ipc.py decode 903030303030303030303030303030303030303030303030303035303030373932
+python3 tools/rseries_ipc.py decode 903030303030303030303030303030303030303030303030303035303030373932
 
 # verify the codec against the format rules
-python3 tools/r7_ipc.py selftest
+python3 tools/rseries_ipc.py selftest
 ```
 
 `config` defaults `band_bits` to `0x0005` (bits 0 and 2) so the mask is actually read. Override it

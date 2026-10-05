@@ -1,12 +1,32 @@
 # Firmware container format
 
+> **Model scope:** Container inspection and raw extraction support R7, R4W and R8W.
+> The legacy decoding keys, ARM offsets and editing procedures below were established
+> for R7. See [R4W/R8W support](R4W_R8W.md) for the wireless models and current limits.
+
+This page describes the legacy **R7** encoding. R4W/R8W share container
+framing but use different opaque code payloads and AES camera databases. See
+[R4W/R8W support](R4W_R8W.md) for their measured maps and decoding limits.
+The generic parser now checks lengths/trailers and preserves unknown encodings.
+
 Reference for the Uniden R7 firmware `.bin` (reverse-engineered from `R7_v153.150.127_db260702.bin`,
 5,121,719 bytes). One combined image serves several models — the R7 uses the `*_nu` sections; the
 R8/R4 use the `ST**` (STM32) images that are also present.
 
+## Shared framing and wireless-model differences
+
+The parser verifies section lengths and `DRSW*` trailers and reads the model
+from the main trailer: R7 = 7, R4W = 24, R8W = 28. The header may be 12 or
+24 bytes depending on the optional legacy sound header. R4W/R8W include
+`GPSD:AEUS`, `STSD`, `LSRS`, `N2DS`, `BLES` and a terminal `NMGF` record.
+Their code payloads are preserved without the R7 transform. `BLES` contains
+a validated ESP32-C3 image; its segment checksum does not establish an
+integrity rule for the other controllers. See [R4W/R8W component framing](R4W_R8W.md)
+for the measured offsets, versions and extraction/repack behavior.
+
 ## 1. The payload transform ("old" encoding)
 
-Every section *payload* is obfuscated the same way (the container framing — tags, lengths, the
+The supported legacy R7 *payloads* use this transform (the container framing — tags, lengths, the
 GPS-DB footer — is plaintext). It is a **pure bijection, not encryption**:
 
 For each 4-byte group, transpose the four 2-bit planes across the four bytes, then subtract a
@@ -20,26 +40,27 @@ out[i+3] = (d0&0xC0)>>6  | (d1&0xC0)>>4 | (d2&0xC0)>>2 | (d3&0xC0)
 out[k]  -= key                       # mod 256, for k = i..i+3
 ```
 
-Because it is bijective, `encode(decode(x)) == x` exactly — see `r7_unpack.py`
-(`decode_old_model` / `encode_old_model`), verified byte-exact on all code sections.
+Because it is bijective, `encode(decode(x)) == x` exactly — see `rseries_unpack.py`
+(`decode_old_model` / `encode_old_model`), verified byte-exact for the documented R7 code sections.
 
 ### Keys
 
 | Section | Key |
 |---|---|
-| Sound | 255 |
+| R7 sound (`sound_dbnu`) / sound version footer | 225 |
 | GPS DB — US (`LRDB`) / NZ (`DFDB`) / IL (`IRDB`) | 210 / 194 / 226 |
 | **ui_nu** (Main) | **182** |
 | **dsp_nu** (DSP) | **184** |
 | **gps_nu** (Sub) | **183** |
 
-The Sound/GPS keys are from the upstream tool; the three **code-section keys were recovered here**
+The GPS keys are from the upstream tool; sound key 225 is documented in
+[SOUND.md](SOUND.md). The three **R7 code-section keys were recovered here**
 by maximizing ARM Thumb-2 disassembly validity.
 
 ## 2. Container layout
 
 ```
-python3 tools/r7_unpack.py parse <fw.bin>
+python3 tools/rseries_unpack.py parse <fw.bin>
 ```
 
 | Section | Offset | Length | Contents | Key |
@@ -48,7 +69,7 @@ python3 tools/r7_unpack.py parse <fw.bin>
 | **ui_nu** (DRSWMAI) | 0x000018 | 195072 | Main MCU — UI, menus, display, graphics | 182 |
 | **dsp_nu** (DRSWDSP) | 0x02fa21 | 114688 | DSP — RF sweep, detection, band logic | 184 |
 | **gps_nu** (DRSWSUB) | 0x04ba2a | 40960 | Sub/GPS MCU | 183 |
-| sound_dbnu (DRSWSDB) | 0x055a33 | ~2 MB | voice / alert audio | 255 |
+| sound_dbnu (DRSWSDB) | 0x055a33 | ~2 MB | voice / alert audio | 225 |
 | GPSD:LRDB | 0x255a46 | ~204 KB | camera database | 210 |
 | STUI / STDS / STGP / STSD | 0x288a65+ | — | R8/R4 STM32 images (unused by R7) | — |
 | NMGF | 0x4e26a4 | — | footer / merge marker | plain |
@@ -69,7 +90,7 @@ Decoding ui_nu/dsp_nu/gps_nu yields **ARM Cortex-M, Thumb-2, little-endian, load
 | gps_nu | 0x20003d38 | 0x174 | |
 
 Load `decoded/*.bin` in Ghidra as **ARM:LE:32:Cortex:default**, image base `0x0`. Extract them with
-`python3 tools/r7_unpack.py extract <fw.bin> decoded/`.
+`python3 tools/rseries_unpack.py extract <fw.bin> decoded/`.
 
 At boot, a copy-descriptor table at ui_nu `0x2f78c` (entries `{src, dst, len, func}`) initializes
 RAM. Block 1 is **`.data`** — **LZSS-compressed** in flash at `0x2f7ac`, unpacked by a custom

@@ -1,15 +1,28 @@
 # What you can change (and what you can't)
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 A practical map of **everything** in the Uniden R7 firmware, classified by *how* you'd change it and
 *which tool* does the job. Findings are for **`R7_v153.150.127`** (offsets move on other versions;
 the *contents* don't). For the exhaustive byte map see [FIRMWARE_MAP.md](FIRMWARE_MAP.md).
+
+## R4W/R8W current capabilities
+
+For R4W/R8W, you can inspect component versions, extract all original bytes,
+validate and export the ESP32-C3 segments, and reproduce an unchanged update.
+The controller-code and AES database decoders are unresolved, so the R7 text,
+graphics, camera and RF editors below reject those models. No hidden key
+combination or non-menu firmware patch is verified for either wireless model.
+See [the measured maps](R4W_R8W.md) and [offline findings](FIRMWARE_FINDINGS.md).
 
 ## The four kinds of change
 
 | Class | What it means | Tool | Risk |
 |---|---|---|---|
-| **data-edit** | Swap bytes in a stored table/asset/string; length-preserving; re-encode + splice. | `r7_patch` · `r7_gfx` · `r7_scan` · `r7_gpsdb` · `r7_bands` · `r7_sound` · `r7_lzss` | Low |
-| **code-patch** | Change ARM Thumb-2 instructions or code-referenced pointer tables/immediates. | Ghidra + `r7_patch.py patch` | High |
+| **data-edit** | Swap bytes in a stored table/asset/string; length-preserving; re-encode + splice. | `rseries_patch` · `rseries_gfx` · `rseries_scan` · `rseries_gpsdb` · `rseries_bands` · `rseries_sound` · `rseries_lzss` | Low |
+| **code-patch** | Change ARM Thumb-2 instructions or code-referenced pointer tables/immediates. | Ghidra + `rseries_patch.py patch` | High |
 | **runtime-config** | A user menu setting stored in the device's EEPROM, **not** in the `.bin`. | On-device menu | None (no flashing) |
 | **not-editable** | Silicon-fixed, bootloader-gated, or an uncracked format — no safe path. | — | — |
 
@@ -29,7 +42,7 @@ keep a stock `.bin`. See [FLASHING.md](FLASHING.md).
 - **Scan idle animation** tiles (the look) — [SCAN_ANIMATION.md](SCAN_ANIMATION.md)
 - **GPS / camera database**: add/remove/modify camera & POI points — [GPS_DATABASE.md](GPS_DATABASE.md)
 - **Voice / alert audio**: replace clips (8-bit PCM) — [SOUND.md](SOUND.md)
-- **DSP band frequencies** — move X/K/Ka detection windows via the coefficient table — `r7_bands.py` (expert)
+- **DSP band frequencies** — move X/K/Ka detection windows via the coefficient table — `rseries_bands.py` (expert)
 
 **RISKY — code-patches (real firmware dev; can brick if wrong, Recovery Mode is your net):**
 
@@ -49,25 +62,25 @@ keep a stock `.bin`. See [FLASHING.md](FLASHING.md).
 
 ## Full classification
 
-### On-screen text  →  data-edit  ·  `r7_patch.py`  ·  SAFE
+### On-screen text  →  data-edit  ·  `rseries_patch.py`  ·  SAFE
 
 Menu items, mode/band/color labels, alert strings, unit strings, the 17 laser-gun-ID names, Ka
 segment freq labels, and the owner name/email slots are all plain NUL-terminated strings in `ui_nu`.
-Edit in place with `r7_patch.py setstr`. **Cap = field size − 1 char** (the tool reserves the NUL and
+Edit in place with `rseries_patch.py setstr`. **Cap = field size − 1 char** (the tool reserves the NUL and
 refuses overflow). Preserve any `%`-format specifier (`%2d`, `%3d`, `%x`, …) — it's load-bearing.
 Full how-to and offset anchors: **[TEXT.md](TEXT.md)**.
 
 > Growing a string *past* its field would need relocating it and rewriting the ARM literal pointer(s)
 > that reference it — that becomes a **code-patch** and is not tooled.
 
-### Graphics — logo, icons, bars, backgrounds  →  data-edit  ·  `r7_gfx.py`  ·  SAFE
+### Graphics — logo, icons, bars, backgrounds  →  data-edit  ·  `rseries_gfx.py`  ·  SAFE
 
 The 176×60 display's bitmaps (1-bpp / 2-bpp / RGB565) round-trip byte-exact. Swap any asset in place
-with `r7_gfx.py replace <fw> <off> <w> <h> <fmt> <png> <out>`. Catalog of 120 assets + offsets in
+with `rseries_gfx.py replace <fw> <off> <w> <h> <fmt> <png> <out>`. Catalog of 120 assets + offsets in
 [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.10. Highlights: boot logo `0x2d526` (176×60 2-bpp), signal bars
 `0x2534a + i·0x804` (114×9 565), band badges, alert icons. Full how-to: **[GRAPHICS.md](GRAPHICS.md)**.
 
-### Fonts (glyph shapes)  →  data-edit  ·  `r7_gfx.py`-style / manual  ·  SAFE
+### Fonts (glyph shapes)  →  data-edit  ·  `rseries_gfx.py`-style / manual  ·  SAFE
 
 Six 1-bpp fonts at `0x2ba8a`–`0x2d526` (main proportional 16×24 @`0x2c024`, four digit fonts, two
 small fonts — [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.9). Swap glyph bitmaps **in place** (keep each
@@ -78,20 +91,20 @@ round-trips under key 182.
 > Changing a font's **box size, char range, or spacing** means patching hardcoded immediates in its
 > draw routine — that's a **code-patch**.
 
-### Scan idle animation  →  tiles + motion are data-edit  ·  `r7_scan.py`, `r7_lzss.py`  ·  SAFE
+### Scan idle animation  →  tiles + motion are data-edit  ·  `rseries_scan.py`, `rseries_lzss.py`  ·  SAFE
 
 The "Scan" main-display animation is **data-driven**, not procedural. The **30 tiles** (11×8 RGB565 @
-`0x29b6e`, 8 themes × 5 states with tile reuse) are uncompressed → edit the *look* with `r7_scan.py`
+`0x29b6e`, 8 themes × 5 states with tile reuse) are uncompressed → edit the *look* with `rseries_scan.py`
 (0-diff verified). Full how-to: **[SCAN_ANIMATION.md](SCAN_ANIMATION.md)**.
 
 Changing the **motion** means editing `framedata[20][8]` (per-cell tile-state 0–4) inside the
 **LZSS-compressed `.data` block1** (flash `0x2f7ac`, [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.4). The
-compressor now exists — **`tools/r7_lzss.py`** (verified round-trip; output fits the `~0x128` B of
+compressor now exists — **`tools/rseries_lzss.py`** (verified round-trip; output fits the `~0x128` B of
 `0xFF` headroom after the stock stream). So re-choreographing is **data-edit** now: decompress block1,
 edit the framedata bytes, re-`compress`, splice `.data` back into `ui_nu`. It's a lower-level flow
 than tile editing (no single turnkey command yet), but it's no longer blocked.
 
-### GPS / camera database  →  data-edit  ·  `r7_gpsdb.py`  ·  SAFE (lowest-risk flash)
+### GPS / camera database  →  data-edit  ·  `rseries_gpsdb.py`  ·  SAFE (lowest-risk flash)
 
 Add, remove, or modify speed cameras, red-light cameras, and custom alert points. 16-byte records,
 key 210, no checksum, auto re-sorted by latitude. Full schema & workflows:
@@ -102,13 +115,13 @@ key 210, no checksum, auto re-sorted by latitude. Full schema & workflows:
 `gps_nu` matcher). Combined RLC+speed sites are **two** records at the same coord.
 Flashed via the Updater's lower-risk "Download Files" path.
 
-### Band filtering (the DSP side)  →  frequencies data-edit; logic code-patch  ·  `r7_bands.py`  ·  RISKY (expert)
+### Band filtering (the DSP side)  →  frequencies data-edit; logic code-patch  ·  `rseries_bands.py`  ·  RISKY (expert)
 
 Band filtering lives in `dsp_nu`. There are **two** halves:
 
 - **data-edit (frequencies):** the RF detection windows are a **coefficient table** (33×16 B @
   `0x0dd34`) with `freq_low`/`freq_high` stored **directly in kHz** — X, K, Ka each have records.
-  **`tools/r7_bands.py setfreq`** moves a band's window (re-encodes key 184, round-trip-verified),
+  **`tools/rseries_bands.py setfreq`** moves a band's window (re-encodes key 184, round-trip-verified),
   and `dump` lists the table. Full guide: **[BAND_FILTERING.md](BAND_FILTERING.md)**,
   [FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2.6. *Caveat: records are shared across modes, so one edit
   affects every mode that uses that band.* (The 20-byte sweep-schedule records @ §2.2 point into this
@@ -122,7 +135,7 @@ Band filtering lives in `dsp_nu`. There are **two** halves:
 - **runtime / protocol:** the DSP also accepts a framed **radar-configuration message** (opcode
   `0x10`) on that same UART, whose `ka_mask` field sets all nine Ka segments at once and whose
   `band_bits` field drives the band enables — see [DSP_PROTOCOL.md](DSP_PROTOCOL.md), tool
-  `tools/r7_ipc.py`. Also volatile. **Whether that UART is reachable from outside the case is
+  `tools/rseries_ipc.py`. Also volatile. **Whether that UART is reachable from outside the case is
   unproven** — the console and this protocol share one port, so both hinge on the same question.
 
 > Turning existing Ka segments on/off is already a **user menu setting** ("Ka Segmentation", 9-bit
@@ -153,11 +166,11 @@ Band filtering lives in `dsp_nu`. There are **two** halves:
 - The MMIO peripheral map, memory map, and the fact that flashing is done by the Nuvoton **LDROM
   bootloader** (the app images don't self-program flash): **not-editable** (silicon/bootloader-gated).
 
-### Voice / alert audio  →  extract-only (for now)  ·  `r7_sound.py`
+### Voice / alert audio  →  extract-only (for now)  ·  `rseries_sound.py`
 
 `sound_dbnu` decodes (key **225**, not 255) to a **Nuvoton ISD3800 ChipCorder flash image** — a
 `0xCX` memory header + a **250-entry voice-prompt directory** + **4-bit ADPCM** clips (decoded in
-the R7's dedicated ISD3800 chip, not in firmware). `r7_sound.py` lists the 250 clips and extracts
+the R7's dedicated ISD3800 chip, not in firmware). `rseries_sound.py` lists the 250 clips and extracts
 raw `.adpcm` + a **best-effort** WAV (silence/timing correct, tone still noisy — the ISD3800's ADPCM
 predictor is proprietary). **Editing** needs an ISD3800 encoder (Nuvoton's ISD-VPE tool), or one
 confirmed clip→word anchor to finish the codec — a WAV cannot be injected as raw bytes. Full
@@ -182,14 +195,14 @@ silicon/base-address mismatch at worst**. Leave them alone. See [FIRMWARE_MAP.md
 | Boot logo, an icon, a signal bar | data-edit | [GRAPHICS.md](GRAPHICS.md) |
 | The on-screen font's look | data-edit | fonts `0x2ba8a`–`0x2d526` ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §1.9) |
 | Scan animation colors/tiles | data-edit | [SCAN_ANIMATION.md](SCAN_ANIMATION.md) |
-| Scan animation *motion* | data-edit | `r7_lzss.py` re-packs `.data` framedata |
+| Scan animation *motion* | data-edit | `rseries_lzss.py` re-packs `.data` framedata |
 | Add/remove cameras or POIs | data-edit | [GPS_DATABASE.md](GPS_DATABASE.md) |
-| Move an X/K/Ka detection frequency | data-edit (expert) | `r7_bands.py` ([BAND_FILTERING.md](BAND_FILTERING.md)) |
+| Move an X/K/Ka detection frequency | data-edit (expert) | `rseries_bands.py` ([BAND_FILTERING.md](BAND_FILTERING.md)) |
 | Turn an existing Ka segment on/off | runtime-config | on-device "Ka Segmentation" menu |
 | A current setting (theme, filters, quota) | runtime-config | on-device menu (EEPROM, not the `.bin`) |
 | A power-on/factory default | code-patch | `FUN_0x1d29c` immediates |
 | Band-mux / detection logic, new segment | code-patch | dsp_nu ([FIRMWARE_MAP.md](FIRMWARE_MAP.md) §2) |
-| Replace a voice / alert clip | data-edit | `r7_sound.py` ([SOUND.md](SOUND.md)) |
+| Replace a voice / alert clip | data-edit | `rseries_sound.py` ([SOUND.md](SOUND.md)) |
 | Anything in the ST\* sections | not-editable | different device — do not flash |
 
 Before flashing anything, read **[FLASHING.md](FLASHING.md)** and keep a stock `.bin`. Change one
