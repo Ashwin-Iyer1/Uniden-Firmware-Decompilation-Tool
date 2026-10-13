@@ -5,6 +5,8 @@ or extend the toolkit. The specific offsets in the tools are for `R7_v153.150.12
 below can be adapted after validating each target's encoding and memory map.
 The R7 subtract keys do not decode R8 controller images or AEUS records. For a
 tested R8 plaintext-BLES workflow, see [R8 BLE analysis](R8_BLE_ANALYSIS.md).
+For the host-side database selection and instruction-checked transfer path, see
+[R8 macOS updater analysis](R8_MACOS_UPDATER.md).
 
 ## Tooling used
 

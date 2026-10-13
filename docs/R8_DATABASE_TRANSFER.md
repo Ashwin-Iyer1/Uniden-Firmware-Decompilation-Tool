@@ -122,6 +122,13 @@ queries find little-endian pointer occurrences and their references, including
 RAM objects outside the mapped image. Reports contain local vendor pseudocode;
 keep them and the extracted image outside version control.
 
+## macOS host-side corroboration
+
+The [macOS updater analysis](R8_MACOS_UPDATER.md) traces the official v2.22
+app independently. R8 type selection, unchanged 128-byte AEUS copying and XOR
+checksums were checked by executing the original x86-64 instructions offline.
+The host path likewise did not reveal an AEUS key or coordinate encoder.
+
 ## Remaining gap
 
 To create new Hong Kong records, recover and verify the receiving controller's
