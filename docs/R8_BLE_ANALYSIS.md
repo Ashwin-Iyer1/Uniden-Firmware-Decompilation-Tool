@@ -59,6 +59,10 @@ output includes local pseudocode: keep it local, as with extracted firmware.
 Automatic analysis and pseudocode can be incomplete or wrong; follow the actual
 instructions and data access before assigning a behavior to a function.
 
+For the command-to-SPI-to-serial database path, explicit ROM-switch assumptions,
+pointer-reference queries and a fresh-import recipe, see
+[R8 database transfer](R8_DATABASE_TRANSFER.md).
+
 ## 3. Compare firmware versions using payload identity
 
 Static extraction was checked against eleven retained R8 firmware containers.
