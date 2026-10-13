@@ -141,3 +141,8 @@ python3 tools/r8_gpsdb.py  export R8_v143.113.126_db260702.bin out.csv   # camer
 
 Scratch analysis (entropy/ECB/popcount scripts, updater IL, key-test oracle, historical-version
 corpus) lives under `r8_work/` (gitignored — derived from copyrighted firmware).
+
+For a reproducible validator/extractor, version comparison and Thumb-seeded
+Ghidra workflow for the plaintext BLES component, see
+[R8 BLE analysis](R8_BLE_ANALYSIS.md). This component can be investigated before
+the opaque controller payloads are decoded; it does not supply an AEUS encoder.

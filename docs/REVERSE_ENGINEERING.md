@@ -2,12 +2,15 @@
 
 How the format was cracked, and how to re-locate feature offsets on a **different firmware version**
 or extend the toolkit. The specific offsets in the tools are for `R7_v153.150.127`; the *methods*
-below are version-independent.
+below can be adapted after validating each target's encoding and memory map.
+The R7 subtract keys do not decode R8 controller images or AEUS records. For a
+tested R8 plaintext-BLES workflow, see [R8 BLE analysis](R8_BLE_ANALYSIS.md).
 
 ## Tooling used
 
 - **Python + capstone** for quick Thumb-2 disassembly (`pip install capstone`).
-- **Ghidra** for full decompilation. Import `decoded/*.bin` as **`ARM:LE:32:Cortex:default`**,
+- **Ghidra** for full decompilation. Import decoded R7 code as **`ARM:LE:32:Cortex`**
+  with compiler specification **`default`**,
   image base `0x0`, then seed the reset handler and auto-analyze.
 - **Pillow** to render candidate bitmaps and *see* what's stored.
 
@@ -88,7 +91,8 @@ pointer table the draw code indexes, then `r7_gfx.py render` at (offset, w, h, f
 ## Contributing a new firmware version
 
 The highest-value contributions are **version → offset tables**. For a new `.bin`:
-1. `parse`/`extract` (works on any R-series image).
+1. Inspect the container, then establish whether the selected component is
+   decoded code. R7 extraction keys are not a decoder for every R-series model.
 2. Re-derive keys if needed; confirm the reset handlers disassemble cleanly.
 3. Re-locate: boot logo, self-test/owner string slots, scan tiles + `.data` layout.
 4. Open a PR adding the offsets (ideally a small `versions/` map the tools can select from).
