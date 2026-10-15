@@ -33,3 +33,5 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
+
+r8_work/

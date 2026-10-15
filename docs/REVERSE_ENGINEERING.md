@@ -4,6 +4,31 @@ How the format was cracked, and how to re-locate feature offsets on a **differen
 or extend the toolkit. The specific offsets in the tools are for `R7_v153.150.127`; the *methods*
 below are version-independent.
 
+## Reproducible full-image export
+
+The [REA/Ghidra continuation report](REA_FINDINGS.md) records the current findings, exact
+Evidence IDs, setup, coverage, and limitations. The three R7 application images now have
+persistent projects and exports of all 1,654 discovered functions.
+
+```sh
+# GHIDRA_INSTALL_DIR must point to an installed Ghidra; JAVA_HOME to its compatible JDK.
+python3 tools/r7_decompile.py --output-dir decoded/ghidra-complete
+# Preserve a saved project's analysis/annotations and generate a new export snapshot:
+python3 tools/r7_decompile.py --output-dir decoded/ghidra-complete --reexport
+```
+
+The runner verifies the v153.150.127 decoded-image hashes, reconstructs startup SRAM,
+seeds real vectors and verified indirect dispatch tables, and exports every discovered
+function to C-like pseudocode and assembly. Manifests report failures, timeouts, actual
+flash hashes, memory mappings, and unclassified ranges. Unclassified bytes can be data or
+padding; successful decompilation is not proof of complete source recovery. Derived files
+stay under ignored `decoded/`.
+
+For focused REA MCP queries, `r7_analysis_elf.py` supplies a verified byte-preserving ELF
+wrapper with Thumb entry/seed metadata. `r7_rea_session.py` can launch a fresh stdio MCP
+connection when the host connection predates a Ghidra environment change. Both are
+analysis utilities; they do not produce flashable firmware.
+
 ## Tooling used
 
 - **Python + capstone** for quick Thumb-2 disassembly (`pip install capstone`).

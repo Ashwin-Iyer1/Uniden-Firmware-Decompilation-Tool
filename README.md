@@ -41,7 +41,7 @@ This project is unaffiliated with and unendorsed by Uniden.
 | **GPS / camera database** (speed, red-light, custom points) | `r7_gpsdb.py` | [docs/GPS_DATABASE.md](docs/GPS_DATABASE.md) |
 | **"Scan" idle animation** (the sweeping bar) | `r7_scan.py` | [docs/SCAN_ANIMATION.md](docs/SCAN_ANIMATION.md) |
 | **RF band frequencies** (move X/K/Ka detection windows) | `r7_bands.py` | [docs/BAND_FILTERING.md](docs/BAND_FILTERING.md) |
-| **Voice / alert audio** (8-bit PCM clips) | `r7_sound.py` | [docs/SOUND.md](docs/SOUND.md) |
+| **Voice / alert audio inspection** (ISD3800 image; approximate playback) | `r7_sound.py` | [docs/SOUND.md](docs/SOUND.md) |
 | **Inspect / unpack the container** | `r7_unpack.py` | [docs/FORMAT.md](docs/FORMAT.md) |
 | **DSP serial messages** (band enables, Ka-segment mask — runtime, no reflash) | `r7_ipc.py` | [docs/DSP_PROTOCOL.md](docs/DSP_PROTOCOL.md) |
 
@@ -54,6 +54,10 @@ Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
 **Analysis utilities:** `r7_alertsim.py` (predict which cameras alert off-device — replicates the
 `gps_nu` directional/distance matcher), `r7_lzss.py` (the `.data` LZSS (de)compressor — unblocks scan
 *motion* edits), `r7_iplink.py` (the ui_nu↔gps_nu inter-MCU link codec).
+
+**Decompiled firmware:** `r7_decompile.py` creates persistent Ghidra projects and C/assembly
+exports. The [latest REA findings](docs/REA_FINDINGS.md) cover 1,654 recovered functions,
+the direct UI→DSP configuration path, and corrected Ka polarity, byte order, and mask gating.
 
 ---
 
