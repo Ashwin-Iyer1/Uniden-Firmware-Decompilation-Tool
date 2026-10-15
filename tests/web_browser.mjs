@@ -173,6 +173,33 @@ try {
     },
   );
   await check(
+    "Practice file uses real edits, byte review, navigation, export, and undo",
+    async () => {
+      await page.locator("#open-practice").click();
+      await page.locator("#practice-guide").waitFor({ state: "visible" });
+      assert.equal(await page.locator("#panel-raw").isVisible(), true);
+      await page.locator("#practice-edit").click();
+      await waitCount(1);
+      assert.equal(await page.locator("#diff-bytes").textContent(), "5");
+      assert.equal(await page.locator("#diff-ranges").textContent(), "1");
+      assert.match(await page.locator("#diff-list").textContent(), /0x40–0x44/);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await noOverflow();
+      await page.screenshot({ path: path.join(out, "comparison-mobile.png"), fullPage: true });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.screenshot({ path: path.join(out, "comparison-desktop.png"), fullPage: true });
+      await page.getByRole("button", { name: "Inspect current bytes at 0x40", exact: true }).click();
+      assert.equal(await page.locator("#raw-view-offset").inputValue(), "0x40");
+      const bytes = await readFile(await exportFile("practice-edited.bin"));
+      assert.equal(bytes.subarray(0x40, 0x4b).toString(), "LOCAL WORLD");
+      assert.equal(await page.locator("#download-firmware").textContent(), "Download practice bytes");
+      await page.locator("#undo").click();
+      await waitCount(0);
+      assert.equal(await page.locator("#diff-bytes").textContent(), "0");
+      assert.equal(await page.locator("#practice-edit").isEnabled(), true);
+    },
+  );
+  await check(
     "Unrecognized binary supports exact raw patching and undo",
     async () => {
       await open({
@@ -181,6 +208,7 @@ try {
         buffer: Buffer.from([1, 2, 3, 4]),
       });
       await tab("raw");
+      assert.equal(await page.locator("#practice-guide").isVisible(), false);
       await page.locator("#raw-patch-offset").fill("0x1");
       await page.locator("#raw-value").fill("AA");
       await page.locator("#apply-raw").click();

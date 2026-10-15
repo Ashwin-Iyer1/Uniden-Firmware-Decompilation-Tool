@@ -1,4 +1,5 @@
 import { openWorkspace, TEXT_FIELDS } from "./firmware.mjs";
+import { practiceBytes } from "./practice.mjs";
 import {
   readBands,
   bandPatch,
@@ -37,6 +38,10 @@ const state = {
   busy: false,
   rendered: {},
   drafts: new Set(),
+  practice: false,
+  comparisonRevision: -1,
+  comparisonCursors: [0],
+  comparisonPage: 0,
 };
 const hex = (value) => `0x${value.toString(16)}`;
 const size = (value) =>
@@ -239,6 +244,8 @@ function refresh() {
   $("undo").disabled = !info.canUndo;
   $("reset-all").disabled = !info.canUndo && !info.changeCount;
   $("change-badge").textContent = String(info.changeCount);
+  $("practice-guide").hidden = !state.practice;
+  $("practice-edit").disabled = state.practice && info.changeCount > 0;
   $("operation-count").textContent = String(info.changeCount);
   $("prepare-download").disabled = !info.changeCount;
   document.querySelectorAll(".profile-required").forEach((element) => {
@@ -267,7 +274,7 @@ function renderPanel() {
   })[state.panel]();
   state.rendered[state.panel] = state.ws.info.revision;
 }
-async function loadFirmware(file) {
+async function loadFirmware(file, { practice = false } = {}) {
   if (!file) return;
   if (!/\.bin$/i.test(file.name))
     throw new Error("Choose a .bin firmware file.");
@@ -290,6 +297,8 @@ async function loadFirmware(file) {
     rendered: {},
     drafts: new Set(),
     soundRevision: null,
+    practice,
+    comparisonRevision: -1,
   });
   $("firmware-file").value = "";
   $("reference-status").textContent = "";
@@ -1204,6 +1213,65 @@ function renderReview() {
     list.append(item);
   }
   $("prepare-download").disabled = !info.changeCount;
+  renderComparison();
+}
+function jumpToRaw(offset) {
+  if (state.drafts.has("raw"))
+    throw new Error("Apply or discard your raw draft before jumping to a different region.");
+  fillSelect("raw-section", sectionOptions(true), "file");
+  $("raw-decoded").checked = false;
+  state.rawOffset = offset;
+  $("raw-patch-offset").value = hex(offset);
+  delete state.rendered.raw;
+  switchPanel("raw", true);
+  $("hex-view").focus();
+}
+function renderComparison() {
+  if (state.comparisonRevision !== state.ws.info.revision) {
+    state.comparisonRevision = state.ws.info.revision;
+    state.comparisonCursors = [0];
+    state.comparisonPage = 0;
+  }
+  const result = state.ws.reviewChanges({ offset: state.comparisonCursors[state.comparisonPage] });
+  state.comparisonNext = result.nextOffset;
+  $("diff-bytes").textContent = result.changedBytes.toLocaleString();
+  $("diff-ranges").textContent = result.rangeCount.toLocaleString();
+  const delta = result.outputSize - result.inputSize;
+  $("diff-size").textContent = `${delta > 0 ? "+" : ""}${delta.toLocaleString()} B`;
+  $("diff-resize-note").hidden = delta === 0;
+  $("diff-empty").hidden = result.changedBytes > 0;
+  const list = $("diff-list");
+  list.replaceChildren();
+  for (const range of result.ranges) {
+    const card = make("article", undefined, "diff-card");
+    const heading = make("div", undefined, "diff-heading");
+    heading.append(make("strong", `${hex(range.offset)}–${hex(range.offset + range.size - 1)}`), make("span", `${range.size.toLocaleString()} ${range.size === 1 ? "byte" : "bytes"}`));
+    const columns = make("div", undefined, "diff-columns");
+    for (const [label, values, kind] of [["Original input", range.before, "before"], ["Current bytes", range.after, "after"]]) {
+      const column = make("div", undefined, `diff-column ${kind}`);
+      column.append(make("span", label, "diff-label"));
+      const code = make("code", undefined, "diff-hex");
+      for (const byte of values) code.append(make("span", byte === null ? "—" : byte.toString(16).padStart(2, "0").toUpperCase()));
+      column.append(code);
+      columns.append(column);
+    }
+    card.append(heading, columns);
+    const footer = make("div", undefined, "diff-footer");
+    footer.append(make("span", range.truncated ? `First ${range.before.length} bytes shown. Explore the full range in Raw / sections.` : "Complete range shown.", "field-help"));
+    if (range.offset < result.outputSize) {
+      const jump = make("button", "Inspect current bytes", "text-button");
+      jump.type = "button";
+      jump.setAttribute("aria-label", `Inspect current bytes at ${hex(range.offset)}`);
+      jump.addEventListener("click", guard(() => jumpToRaw(range.offset)));
+      footer.append(jump);
+    } else footer.append(make("span", "Removed from the current file", "field-help"));
+    card.append(footer);
+    list.append(card);
+  }
+  $("diff-pagination").hidden = state.comparisonPage === 0 && result.nextOffset === null;
+  $("diff-prev").disabled = state.comparisonPage === 0;
+  $("diff-next").disabled = result.nextOffset === null;
+  $("diff-page").textContent = `Page ${state.comparisonPage + 1} · ${result.ranges.length} ranges shown`;
 }
 async function prepareDownloads() {
   if (!state.ws?.info.changeCount) return;
@@ -1237,11 +1305,33 @@ async function prepareDownloads() {
     $(id).download = name;
   }
   $("downloads").hidden = false;
+  $("download-firmware").textContent = state.practice ? "Download practice bytes" : "Download modified firmware";
   $("prepare-download").disabled = false;
   status("Downloads are ready. Your original file is unchanged.");
 }
 
 $("choose-file").addEventListener("click", () => $("firmware-file").click());
+$("open-practice").addEventListener("click", guard(async () => {
+  await loadFirmware(new File([practiceBytes()], "workbench-practice.bin", { type: "application/octet-stream" }), { practice: true });
+  jumpToRaw(0x40);
+  status("Practice file opened. Apply the example edit, then compare its bytes and try Undo. This sample is not firmware.");
+}));
+$("practice-edit").addEventListener("click", guard(() => {
+  if (!state.practice || state.ws.info.changeCount) return;
+  transaction("Practice: change HELLO to LOCAL", () => state.ws.applyPatches([
+    { section: "file", offset: 0x40, bytes: new TextEncoder().encode("LOCAL") },
+  ], "Practice: change HELLO to LOCAL"), "practice");
+  switchPanel("review", true);
+}));
+$("practice-inspect").addEventListener("click", guard(() => jumpToRaw(0x40)));
+$("diff-prev").addEventListener("click", () => {
+  if (state.comparisonPage > 0) { state.comparisonPage--; renderComparison(); }
+});
+$("diff-next").addEventListener("click", () => {
+  if (state.comparisonNext === null) return;
+  state.comparisonCursors[++state.comparisonPage] = state.comparisonNext;
+  renderComparison();
+});
 $("choose-another").addEventListener("click", () => $("firmware-file").click());
 $("firmware-file").addEventListener(
   "change",

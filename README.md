@@ -39,6 +39,8 @@ to edit band starts/ends, text, graphics and fonts, scan motion, and GPS records
 for verified R7 v153.150.127 firmware. The raw editor can patch any byte, inspect
 typed values, and import/export complete sections, including code and opaque data.
 Download a modified copy and a change report; files stay in your browser.
+Try the built-in invented practice file without supplying firmware. Review net
+byte changes side by side, inspect each range, and undo before downloading.
 Named R7 controls require a verified layout or a verified original reference.
 Unrecognized files remain editable in raw mode, without claims about their meaning.
 See [the web editor guide](docs/WEB_EDITOR.md) for scope, verification and local setup.

@@ -75,6 +75,10 @@
           <button id="choose-file" type="button" class="button primary">
             Choose firmware
           </button>
+          <div class="practice-entry">
+            <button id="open-practice" type="button" class="text-button">Try a practice file</button>
+            <p class="field-help">Explore editing and review with invented bytes. No firmware needed.</p>
+          </div>
         </div>
       </section>
       <input
@@ -105,6 +109,17 @@
         </div>
         <p id="compatibility" class="compatibility"></p>
       </section>
+      <aside id="practice-guide" class="practice-guide" aria-labelledby="practice-title" hidden>
+        <div>
+          <span class="step-label">GUIDED PRACTICE</span>
+          <h2 id="practice-title">Make a change. See exactly what moved.</h2>
+          <p>This 256-byte sample is invented, not device firmware. Change its greeting, review the original and edited bytes, then try Undo. Mapped R7 editors stay locked.</p>
+        </div>
+        <div class="practice-actions">
+          <button id="practice-edit" class="button primary" type="button">Apply example edit</button>
+          <button id="practice-inspect" class="button secondary" type="button">Explore raw bytes</button>
+        </div>
+      </aside>
       <div id="editor-shell" class="editor-shell" hidden>
         <nav
           class="editor-nav"
@@ -975,6 +990,26 @@
               your edited copy.
             </p>
             <p id="review-integrity" class="compatibility"></p>
+            <section class="comparison" aria-labelledby="comparison-title">
+              <div class="section-heading">
+                <h3 id="comparison-title">What actually changed</h3>
+                <span class="step-label">ORIGINAL → CURRENT</span>
+              </div>
+              <div class="comparison-stats">
+                <div><strong id="diff-bytes">0</strong><span>different byte positions</span></div>
+                <div><strong id="diff-ranges">0</strong><span>contiguous ranges</span></div>
+                <div><strong id="diff-size">0</strong><span>file size change</span></div>
+              </div>
+              <p class="field-help">Compares encoded whole-file bytes at the same absolute offsets, including applied edits only. <span id="diff-resize-note" hidden>After insertion or deletion, shifted data also counts as different; this is not an aligned comparison.</span> A dash means no byte exists at that position.</p>
+              <p id="diff-empty" class="comparison-empty">The current bytes match your input exactly.</p>
+              <div id="diff-list" class="diff-list"></div>
+              <nav id="diff-pagination" class="diff-pagination" aria-label="Byte change pages" hidden>
+                <button id="diff-prev" type="button" class="button secondary">Previous ranges</button>
+                <span id="diff-page" role="status" aria-live="polite"></span>
+                <button id="diff-next" type="button" class="button secondary">Next ranges</button>
+              </nav>
+            </section>
+            <h3 class="history-heading">Applied operations</h3>
             <p id="no-changes" class="subtle">No applied changes yet.</p>
             <ol id="review-list" class="operation-list"></ol>
             <p class="experimental-note">

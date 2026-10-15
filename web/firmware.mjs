@@ -17,6 +17,7 @@ import {
   SCAN_DATA_HASH,
   normalizedUiData,
 } from "./profile.mjs";
+import { differenceSummary, differencePage } from "./comparison.mjs";
 export { MAX_FILE_SIZE, decodeOldModel, encodeOldModel } from "./binary.mjs";
 export const LOGO_WIDTH = 176;
 export const LOGO_HEIGHT = 60;
@@ -622,31 +623,6 @@ function byteDescription(bytes) {
   return `${bytes.length} bytes${preview ? `: ${preview}${bytes.length > 32 ? " …" : ""}` : ""}`;
 }
 
-function differenceSummary(before, after) {
-  const ranges = [];
-  const length = Math.max(before.length, after.length);
-  let start = -1;
-  let changedBytes = 0;
-  let rangeCount = 0;
-  for (let i = 0; i <= length; i++) {
-    const differs = i < length && before[i] !== after[i];
-    if (differs) {
-      changedBytes++;
-      if (start < 0) start = i;
-    } else if (start >= 0) {
-      rangeCount++;
-      if (ranges.length < 4096) ranges.push({ offset: start, size: i - start });
-      start = -1;
-    }
-  }
-  return {
-    changedBytes,
-    diffRanges: ranges,
-    diffRangeCount: rangeCount,
-    diffRangesTruncated: rangeCount > ranges.length,
-  };
-}
-
 /**
  * A lossless local editing session. Every byte can be edited, including unknown
  * containers. Only verified layouts receive names for the researched controls.
@@ -700,6 +676,8 @@ export async function openWorkspace(value, { reference } = {}) {
   let revision = 0;
   let history = [];
   let historySize = 0;
+  let comparisonRevision = -1;
+  let comparisonSummary;
 
   function knownNow() {
     return (
@@ -783,6 +761,20 @@ export async function openWorkspace(value, { reference } = {}) {
       return decoded && section.key != null
         ? decodeOldModel(section.key, bytes)
         : bytes;
+    },
+    reviewChanges(options = {}) {
+      if (comparisonRevision !== revision) {
+        comparisonSummary = differenceSummary(original, state.bytes);
+        comparisonRevision = revision;
+      }
+      return {
+        revision,
+        inputSize: original.length,
+        outputSize: state.bytes.length,
+        changedBytes: comparisonSummary.changedBytes,
+        rangeCount: comparisonSummary.diffRangeCount,
+        ...differencePage(original, state.bytes, options),
+      };
     },
     applyPatches(patches, label = "Edit bytes") {
       if (!Array.isArray(patches))

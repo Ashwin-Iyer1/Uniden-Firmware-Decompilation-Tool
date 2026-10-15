@@ -5,6 +5,13 @@ to edit your own firmware locally. It combines named R7 resource editors with
 access to every byte of the file, decoded sections, and complete section replacement.
 Download a separate modified `.bin` and a JSON change report; keep your original.
 
+No firmware to hand? Choose **Try a practice file** on the opening screen. It
+creates 256 invented bytes in memory, with no vendor firmware or extracted assets.
+Apply the example greeting edit, inspect its five changed bytes in Review, jump to
+the raw editor, download the sample, or undo it. This uses the same editing and
+export code as a real file. The sample is not device firmware and deliberately
+does not unlock profile-gated R7 controls.
+
 ## Editors
 
 | Editor | What it changes | Coordinates / constraints |
@@ -70,6 +77,18 @@ and byte-difference ranges. Large descriptions and histories may be truncated, w
 that fact reported. It is an audit report, not a replayable replacement for keeping
 the source and output files. Byte-difference offsets after a resize describe the
 final files positionally, so shifted untouched data can appear as differences.
+
+**What actually changed** in Review compares the current applied bytes with your
+original input before download. It shows the exact number of different byte
+positions, contiguous ranges, file size change, and side-by-side hex previews.
+Each page contains up to eight ranges; previews show at most 24 bytes per range.
+Use **Inspect current bytes** to open a range in Raw / sections. Pagination reaches
+every range, including those beyond the JSON manifest's 4,096-range preview cap.
+A dash marks a position absent from one file. The comparison uses encoded
+whole-file offsets, not decoded section offsets or an insertion-aware alignment.
+After a resize, moved bytes can count as differences; consult the operation history
+to understand the edit. Undo, reset, and later edits refresh the comparison.
+Reverting bytes manually can yield zero differences even with operations in history.
 
 ## Limits of the analysis
 

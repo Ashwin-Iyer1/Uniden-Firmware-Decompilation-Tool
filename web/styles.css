@@ -11,6 +11,44 @@
   --display-font: "Trebuchet MS", sans-serif;
   --body-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
+.practice-entry { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 14px; max-width: 280px; }
+.practice-entry .field-help { margin-top: 5px; }
+.practice-guide { display: flex; justify-content: space-between; align-items: center; gap: 28px; padding: 24px 28px; margin: 0 0 20px; border: 1px solid #b7c9eb; border-radius: 12px; background: #e9f0ff; }
+.practice-guide h2 { margin: 5px 0 8px; font-size: 20px; }
+.practice-guide p { max-width: 680px; color: #3f5570; font-size: 13px; }
+.practice-actions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.comparison { border-top: 1px solid var(--line); padding-top: 24px; margin: 28px 0; }
+.comparison h3, .history-heading { margin: 0; font-size: 17px; }
+.comparison .section-heading { margin-bottom: 18px; }
+.comparison-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 14px; }
+.comparison-stats > div { display: flex; flex-direction: column; gap: 2px; padding: 15px; background: #f0f4f8; border-radius: 7px; }
+.comparison-stats strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.comparison-stats span { font-size: 11px; color: var(--slate); }
+.comparison-empty { padding: 20px 0 0; color: var(--slate); font-size: 13px; }
+.diff-list { display: grid; gap: 14px; margin-top: 18px; }
+.diff-card { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
+.diff-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 12px 16px; background: #f6f8fb; font-family: ui-monospace, monospace; font-size: 13px; }
+.diff-heading > span { color: var(--slate); font-size: 12px; white-space: nowrap; }
+.diff-columns { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+.diff-column { padding: 13px 16px; min-width: 0; }
+.diff-column.before { background: #fff8f5; }
+.diff-column.after { background: #f1f8f5; }
+.diff-label { display: block; font-size: 11px; color: var(--slate); margin-bottom: 9px; }
+.diff-hex { display: flex; flex-wrap: wrap; gap: 4px 7px; font-family: ui-monospace, monospace; font-size: 12px; font-weight: 600; }
+.diff-hex > span { min-width: 2ch; text-align: center; }
+.diff-footer { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 10px 16px; }
+.diff-footer .text-button { flex-shrink: 0; font-size: 12px; }
+.diff-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; font-size: 12px; color: var(--slate); }
+@media (max-width: 700px) {
+  .practice-guide { flex-direction: column; align-items: stretch; padding: 20px; gap: 16px; }
+  .practice-actions { flex-direction: row; flex-wrap: wrap; }
+  .comparison-stats { gap: 6px; }
+  .comparison-stats > div { padding: 10px; }
+  .comparison-stats strong { font-size: 20px; }
+  .diff-columns { grid-template-columns: minmax(0,1fr); }
+  .diff-footer { align-items: flex-start; flex-direction: column; }
+  .diff-pagination { flex-wrap: wrap; }
+}
 * {
   box-sizing: border-box;
 }
