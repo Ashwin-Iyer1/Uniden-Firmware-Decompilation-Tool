@@ -234,12 +234,14 @@ function refresh() {
   $("file-name").textContent = state.fileName;
   $("file-summary").textContent =
     `${size(info.fileSize)} · ${ws.sections.length} recognized sections`;
-  $("compatibility").textContent = info.profileKnown
+  $("compatibility").textContent = state.practice
+    ? "Practice sample: raw-byte review only; device-format validation is not applicable."
+    : info.profileKnown
     ? `R7 v153.150.127 layout identified. ${info.profileReason || "Mapped editors and raw editing are available."}`
     : `Raw editing is available. ${info.profileReason || info.error || "The mapped R7 profile is not identified."}`;
   $("compatibility").classList.toggle(
     "unsupported",
-    !info.profileKnown || !info.containerValid,
+    !state.practice && (!info.profileKnown || !info.containerValid),
   );
   $("undo").disabled = !info.canUndo;
   $("reset-all").disabled = !info.canUndo && !info.changeCount;
@@ -311,7 +313,9 @@ async function loadFirmware(file, { practice = false } = {}) {
 }
 function renderOverview() {
   const { ws } = state;
-  $("container-state").textContent = ws.info.containerValid
+  $("container-state").textContent = state.practice
+    ? "Practice sample · not applicable"
+    : ws.info.containerValid
     ? "Framing parsed"
     : "Unrecognized or invalid";
   $("profile-state").textContent = ws.info.profileKnown
@@ -1187,12 +1191,14 @@ function renderReview() {
     changes = state.ws.changes || state.history.map((label) => ({ label }));
   $("review-count").textContent =
     `${info.changeCount} applied operations${state.drafts.size ? ` · ${state.drafts.size} unapplied drafts` : ""}`;
-  $("review-integrity").textContent = info.containerValid
+  $("review-integrity").textContent = state.practice
+    ? "Practice sample: raw-byte review only; device-format validation is not applicable."
+    : info.containerValid
     ? `Container framing parses. ${info.profileKnown ? "Mapped R7 layout is available; edited bytes are not stock-verified." : "The named R7 profile is not identified."}`
     : `Container is unrecognized or invalid: ${info.error || "framing could not be parsed"}. Export remains available for raw work.`;
   $("review-integrity").classList.toggle(
     "unsupported",
-    !info.containerValid || !info.profileKnown,
+    !state.practice && (!info.containerValid || !info.profileKnown),
   );
   $("no-changes").hidden = info.changeCount > 0;
   const list = $("review-list");

@@ -177,9 +177,13 @@ try {
     async () => {
       await page.locator("#open-practice").click();
       await page.locator("#practice-guide").waitFor({ state: "visible" });
+      assert.match(await page.locator("#compatibility").textContent(), /device-format validation is not applicable/);
+      assert.equal(await page.locator("#compatibility").evaluate((element) => element.classList.contains("unsupported")), false);
       assert.equal(await page.locator("#panel-raw").isVisible(), true);
       await page.locator("#practice-edit").click();
       await waitCount(1);
+      assert.match(await page.locator("#review-integrity").textContent(), /Practice sample: raw-byte review only/);
+      assert.equal(await page.locator("#review-integrity").evaluate((element) => element.classList.contains("unsupported")), false);
       assert.equal(await page.locator("#diff-bytes").textContent(), "5");
       assert.equal(await page.locator("#diff-ranges").textContent(), "1");
       assert.match(await page.locator("#diff-list").textContent(), /0x40–0x44/);
@@ -209,6 +213,7 @@ try {
       });
       await tab("raw");
       assert.equal(await page.locator("#practice-guide").isVisible(), false);
+      assert.equal(await page.locator("#compatibility").evaluate((element) => element.classList.contains("unsupported")), true);
       await page.locator("#raw-patch-offset").fill("0x1");
       await page.locator("#raw-value").fill("AA");
       await page.locator("#apply-raw").click();
