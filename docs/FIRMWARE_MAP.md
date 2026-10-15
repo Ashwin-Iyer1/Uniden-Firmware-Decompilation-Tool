@@ -32,7 +32,7 @@ A complete, region-by-region map of the Uniden R7 combined firmware image, rever
 | 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | **225** | voice / alert audio — Nuvoton ISD3800 flash image, 4-bit ADPCM (§4) |
 | 5 | **GPSD:LRDB** | `0x255a46` | ~204 KB | 210 | camera / POI database |
 | 6 | STUI / STDS / STGP / STSD | `0x288a65`+ | — | 182/184/183/255 | parallel STM32 image set (not run by the R7) |
-| — | NMGF footer | `0x4e26a4` | 12 B | plain | merge marker; file ends at NMGF+12 |
+| — | NMGF footer | `0x4e26ab` | 12 B | plain | merge marker; file ends at NMGF+12 |
 
 The payload transform (2-bit-plane transpose per 4-byte group + subtract per-section key) and the
 key table are documented in [FORMAT.md](FORMAT.md) §1. All sections round-trip byte-exact
@@ -67,7 +67,9 @@ Each code/image section ends in a **9-byte trailer**: `u16 (model<<10 | version)
 | STDS | `0x2d7a7a` | `0x1c96` | 7 / 150 | `DRSWSTD` |
 | STGP | `0x2e268f` | `0x1c7f` | 7 / 127 | `DRSWSTG` |
 
-Sound-type sections (`sound_dbnu`, `STSD`, both key 255) get **only** a 7-byte terminator, no u16.
+Sound-type sections (`sound_dbnu`, `STSD`) have a 12-byte footer followed by a
+7-byte terminator, without a u16 version. The R7 `sound_dbnu` decode key is **225**;
+the legacy key 255 is not valid for that ISD3800 payload (see [SOUND.md](SOUND.md)).
 
 > **Disagreement worth noting.** The container-framing analysis reads the ST* trailers as
 > **model 7 (R7)** with the *same* version triplet as ui/dsp/gps, suggesting "ST" is a parallel R7
@@ -86,7 +88,7 @@ conventions:
 |---|---|---|---|
 | GPSD/GASD | `GPSD:LRDB` | `clen-12`, no 512 rounding | 12-byte footer + 7-byte term |
 | STUI/STDS/STGP | ST* code | `alter_length(clen)` | 9-byte trailer |
-| STSD/SUSD | ST* sound | `clen-12` | 7-byte term (key 255) |
+| STSD | ST* sound, verified stock layout | `clen-12` | 12-byte footer + 7-byte term |
 
 Confirmed `clen`: GPSD `0x3300c`, STUI `0x30fe8`, STDS `0x1dfa4`, STGP `0xab24`, STSD `0x200000`.
 
@@ -96,20 +98,23 @@ Final 12 bytes at file `0x4e26ab`: `['NMGF'][u32 0][u32 0x64=100]`. Middle `0` (
 records) marks it as a terminator; trailing `100` = merge-container format/version, **not** a
 checksum. File ends exactly at NMGF+12.
 
-> Parser note: `r7_unpack.py parse()` never emits the NMGF row — its `while pos < len-12` loop exits
-> exactly at the footer offset. It also hardcodes version 0 for ST* sections, missing their
-> `model7/ver153·150·127` trailers.
+> Parser note: the legacy `r7_unpack.py parse()` skips the STSD footer incorrectly and
+> excludes an exact final 12-byte record with its `while pos < len-12` condition, so it
+> does not reliably report NMGF. It also hardcodes version 0 for ST* sections, missing
+> their `model7/ver153·150·127` trailers. The browser parser checks these boundaries
+> explicitly. Unverified SUSD framing is not inferred from STSD.
 
-### 0.5 Integrity — DEFINITIVELY ABSENT  ·  confidence: high
+### 0.5 No in-file integrity field identified
 
 CRC32 / Adler32 / sum32 (LE+BE) / sum-of-bytes / xor32 were computed over **every section** (encoded
 *and* decoded, full and minus-trailer) and over whole-image ranges (up to NMGF, minus last 4/8/12) —
 **none** of the resulting 32-bit values appears anywhere in the 5.12 MB file, in either byte order.
 The only "matches" are 16-bit CRC values landing in random data (birthday coincidence), never in a
-structural slot. **There is no in-file integrity/CRC/signature over any section or the whole image.**
-Any edit that preserves framing (correct length words, tag records, trailers, 512-rounding) parses
-cleanly with nothing to recompute. Integrity is enforced only by the update transport; Recovery Mode
-makes a bad flash recoverable (see [FLASHING.md](FLASHING.md)).
+structural slot. These searches found no integrity field that the editing tools must recompute.
+They do not prove the absence of every checksum, signature scheme or device-side validation.
+Preserving framing makes the edited file parseable, but does not establish that an updater or
+detector will accept it. Modified browser exports have not been tested on hardware; see
+[FLASHING.md](FLASHING.md) for the separate update and recovery workflow.
 
 ---
 

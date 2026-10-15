@@ -32,6 +32,16 @@ This project is unaffiliated with and unendorsed by Uniden.
 
 ---
 
+## Web editor
+
+**[Open the firmware workbench](https://ashwin-iyer1.github.io/Uniden-Firmware-Decompilation-Tool/)**
+to select your own `.bin`, edit verified R7 v153.150.127 text and boot-logo slots,
+and download a modified copy with a change report. Files stay in your browser.
+Other versions are inspection-only when their container format is recognized.
+See [the web editor guide](docs/WEB_EDITOR.md) for scope, verification and local setup.
+
+---
+
 ## What you can change
 
 | Capability | Tool | Guide |
@@ -123,8 +133,9 @@ obfuscated with a **2-bit-plane transpose across every 4-byte group, then a per-
 key** — a pure bijection, *not* encryption. Decoding the three code sections yields **ARM
 Cortex-M** images. Full details, keys, and memory maps: **[docs/FORMAT.md](docs/FORMAT.md)**.
 
-There is **no whole-image checksum** on the code sections, and the R7's bootloader Recovery Mode
-can restore a bad flash — which is what makes safe experimentation practical.
+No in-file checksum requiring recomputation has been identified for these edits. Static
+round-trip checks do not establish device acceptance; review the separate update and
+recovery instructions before flashing.
 
 ## Firmware versions
 
@@ -144,6 +155,8 @@ docs/      guides: FORMAT, SETUP, FLASHING; per-capability (TEXT, GRAPHICS, GPS_
            SCAN_ANIMATION, BAND_FILTERING, SOUND); FIRMWARE_MAP + WHAT_YOU_CAN_CHANGE;
            REVERSE_ENGINEERING
 examples/  clean templates (e.g. a GPS-database CSV)
+web/       browser-local firmware inspector and version-checked editor
+tests/     protocol and browser engine regressions
 ```
 
 ## Contributing

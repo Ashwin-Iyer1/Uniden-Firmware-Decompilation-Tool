@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#eef2f5" />
+    <meta
+      name="description"
+      content="Inspect your Uniden firmware and customize supported R7 messages and boot images locally in your browser."
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>R7 firmware workbench</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./app.mjs"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#workbench">Skip to editor</a>
+    <header class="site-header page-width">
+      <a class="wordmark" href="./" aria-label="R7 firmware workbench home"
+        ><span class="mark" aria-hidden="true">R7</span
+        ><span>Firmware workbench</span></a
+      >
+      <a
+        class="source-link"
+        href="https://github.com/Ashwin-Iyer1/Uniden-Firmware-Decompilation-Tool"
+        >View source
+        <svg aria-hidden="true" viewBox="0 0 20 20">
+          <path d="M5 15 15 5M5 5h10v10" /></svg
+      ></a>
+    </header>
+
+    <main id="workbench" class="page-width">
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <h1 id="page-title">Make your R7<br />feel like yours.</h1>
+          <p class="intro-copy">
+            Personalize the startup screen and display labels in your firmware.
+            Inspect your file, make a few changes, and download a new copy.
+          </p>
+        </div>
+        <div class="local-note">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5zM12 14v3" />
+          </svg>
+          <div>
+            <strong>Your file stays with you.</strong>
+            <p>
+              Everything runs in this browser.<br />
+              Nothing is uploaded or saved online.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div id="error" class="error-message" role="alert" hidden></div>
+      <div class="workbench">
+        <div class="controls-column">
+          <section
+            id="upload-panel"
+            class="upload-panel"
+            aria-labelledby="upload-title"
+          >
+            <div class="section-heading">
+              <h2 id="upload-title">Start with your firmware</h2>
+              <span class="step-label">Load</span>
+            </div>
+            <div id="drop-zone" class="drop-zone">
+              <svg class="file-icon" aria-hidden="true" viewBox="0 0 40 48">
+                <path d="M8 2h16l10 10v34H6V2zM24 2v12h10M14 24h12M14 31h12" />
+              </svg>
+              <p class="drop-title">Drop a Uniden .bin file here</p>
+              <p class="subtle">Or choose it from your device. Up to 32 MB.</p>
+              <button id="choose-file" type="button" class="button primary">
+                Choose firmware
+              </button>
+              <input
+                id="firmware-file"
+                type="file"
+                accept=".bin,application/octet-stream"
+                hidden
+              />
+            </div>
+            <p class="support-note">
+              <span class="status-dot" aria-hidden="true"></span>Editing
+              supports R7 v153.150.127. Other recognized versions can be
+              inspected.
+            </p>
+          </section>
+
+          <section
+            id="loaded-panel"
+            class="loaded-panel"
+            aria-labelledby="loaded-title"
+            hidden
+          >
+            <div class="section-heading">
+              <h2 id="loaded-title">Your firmware</h2>
+              <button id="choose-another" type="button" class="text-button">
+                Load another file
+              </button>
+            </div>
+            <div class="loaded-file">
+              <span class="file-badge" aria-hidden="true">.bin</span>
+              <div>
+                <p id="file-name" class="file-name"></p>
+                <p id="file-summary" class="subtle"></p>
+              </div>
+            </div>
+            <p id="compatibility" class="compatibility"></p>
+            <details id="firmware-details" class="file-details">
+              <summary>File details</summary>
+              <dl class="hash-detail">
+                <dt>SHA-256 of original file</dt>
+                <dd id="file-hash"></dd>
+              </dl>
+              <div class="table-scroll">
+                <table>
+                  <caption class="visually-hidden">
+                    Firmware sections
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Section</th>
+                      <th scope="col">Version</th>
+                      <th scope="col">Size</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sections-body"></tbody>
+                </table>
+              </div>
+            </details>
+          </section>
+
+          <section
+            id="text-editor"
+            class="text-editor"
+            aria-labelledby="text-title"
+            hidden
+          >
+            <div class="section-heading">
+              <h2 id="text-title">Make it personal</h2>
+              <span class="step-label">Edit</span>
+            </div>
+            <p class="section-description">
+              Use letters, numbers, and standard punctuation.
+            </p>
+            <div class="field">
+              <div class="field-label">
+                <label for="selfTest">Self-test message</label
+                ><span id="selfTest-count" class="character-count">0 / 11</span>
+              </div>
+              <input
+                id="selfTest"
+                name="selfTest"
+                type="text"
+                maxlength="11"
+                autocomplete="off"
+                spellcheck="false"
+                aria-describedby="selfTest-help selfTest-count selfTest-error"
+                disabled
+              />
+              <p id="selfTest-help" class="field-help">
+                Replaces the “Self Test” text.
+              </p>
+              <p id="selfTest-error" class="field-error" hidden></p>
+            </div>
+            <div class="field">
+              <div class="field-label">
+                <label for="owner1">Alert display label 1</label
+                ><span id="owner1-count" class="character-count">0 / 19</span>
+              </div>
+              <input
+                id="owner1"
+                name="owner1"
+                type="text"
+                maxlength="19"
+                autocomplete="off"
+                spellcheck="false"
+                aria-describedby="owner1-count owner1-error"
+                disabled
+              />
+              <p id="owner1-error" class="field-error" hidden></p>
+            </div>
+            <div class="field">
+              <div class="field-label">
+                <label for="owner2">Alert display label 2</label
+                ><span id="owner2-count" class="character-count">0 / 19</span>
+              </div>
+              <input
+                id="owner2"
+                name="owner2"
+                type="text"
+                maxlength="19"
+                autocomplete="off"
+                spellcheck="false"
+                aria-describedby="owner2-help owner2-count owner2-error"
+                disabled
+              />
+              <p id="owner2-help" class="field-help">
+                Replace the “Alert Display #1” and “Alert Display #2” menu
+                labels.
+              </p>
+              <p id="owner2-error" class="field-error" hidden></p>
+            </div>
+          </section>
+        </div>
+
+        <section class="preview-column" aria-labelledby="preview-title">
+          <div class="section-heading">
+            <h2 id="preview-title">Your startup screen</h2>
+            <span class="preview-spec">176 × 60 pixels</span>
+          </div>
+          <figure class="device-figure">
+            <div class="device">
+              <div class="device-top">
+                <span>R7</span>
+                <div class="device-buttons" aria-hidden="true">
+                  <i></i><i></i><i></i>
+                </div>
+              </div>
+              <div class="display-bezel">
+                <div class="display-surface">
+                  <canvas
+                    id="logo-preview"
+                    width="176"
+                    height="60"
+                    role="img"
+                    aria-label="Boot logo preview"
+                  ></canvas>
+                  <p id="preview-empty">Your boot image<br />appears here</p>
+                </div>
+              </div>
+              <div class="device-bottom" aria-hidden="true">
+                <span class="device-light"></span
+                ><span class="device-grille"></span>
+              </div>
+            </div>
+            <figcaption id="preview-caption">
+              A preview of the boot image stored in your file.
+            </figcaption>
+          </figure>
+          <div id="logo-editor" class="logo-editor" hidden>
+            <div class="image-actions">
+              <button id="choose-logo" type="button" class="button secondary">
+                Choose image</button
+              ><button
+                id="reset-logo"
+                type="button"
+                class="text-button"
+                disabled
+              >
+                Reset logo</button
+              ><input
+                id="logo-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+              />
+            </div>
+            <p id="logo-help" class="field-help">
+              PNG, JPEG, or WebP. Images are resized to 176 × 60 and converted
+              to four shades of gray.
+            </p>
+            <p id="logo-status" class="logo-status" aria-live="polite"></p>
+          </div>
+          <div class="scope-note">
+            <strong>A focused first release</strong>
+            <p>
+              Customize messages and the boot image. The desktop tools in the
+              repository cover deeper firmware analysis and other resources.
+            </p>
+          </div>
+        </section>
+      </div>
+
+      <section id="review" class="review" aria-labelledby="review-title" hidden>
+        <div class="section-heading">
+          <h2 id="review-title">Review your changes</h2>
+          <span class="step-label">Save a copy</span>
+        </div>
+        <p id="no-changes" class="subtle">
+          No changes yet. Your original file stays untouched.
+        </p>
+        <ul id="review-list" class="review-list"></ul>
+        <div class="download-area">
+          <div>
+            <p class="experimental-note">
+              <strong>Experimental firmware edits.</strong> Modified files have
+              not been tested on hardware. Keep your original and use your
+              established update procedure.
+            </p>
+            <p
+              id="status"
+              class="status-message"
+              role="status"
+              aria-live="polite"
+            >
+              Choose firmware to begin.
+            </p>
+          </div>
+          <div class="download-actions">
+            <button id="reset-all" type="button" class="text-button" disabled>
+              Reset all changes</button
+            ><button
+              id="prepare-download"
+              type="button"
+              class="button primary"
+              disabled
+            >
+              Prepare downloads
+            </button>
+          </div>
+        </div>
+        <div id="downloads" class="downloads" hidden>
+          <div class="download-ready">
+            <span class="ready-check" aria-hidden="true">✓</span>
+            <div>
+              <strong>Your edited copy is ready.</strong>
+              <p>
+                Save the change manifest alongside it for a record of your
+                edits.
+              </p>
+            </div>
+          </div>
+          <div class="download-links">
+            <a id="download-firmware" class="button primary"
+              >Download modified firmware</a
+            ><a id="download-manifest" class="manifest-link"
+              >Download change manifest</a
+            >
+          </div>
+        </div>
+      </section>
+      <p id="load-status" class="load-status" role="status" aria-live="polite">
+        Ready for your file.
+      </p>
+      <noscript
+        ><p class="error-message">
+          Enable JavaScript to inspect and edit firmware in your browser.
+        </p></noscript
+      >
+    </main>
+
+    <footer class="site-footer page-width">
+      <p>An independent community project.<br />Not affiliated with Uniden.</p>
+      <nav aria-label="Project">
+        <a
+          href="https://github.com/Ashwin-Iyer1/Uniden-Firmware-Decompilation-Tool#readme"
+          >Documentation</a
+        ><a
+          href="https://github.com/Ashwin-Iyer1/Uniden-Firmware-Decompilation-Tool/issues"
+          >Report an issue</a
+        >
+      </nav>
+    </footer>
+  </body>
+</html>
