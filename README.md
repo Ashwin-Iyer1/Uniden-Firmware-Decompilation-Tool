@@ -34,7 +34,7 @@ This project is unaffiliated with and unendorsed by Uniden.
 
 ## Web editor
 
-**[Open the firmware workbench](https://ashwin-iyer1.github.io/Uniden-Firmware-Decompilation-Tool/)**
+**[Open the firmware workbench](https://ashwin-iyer1.github.io/Uniden-Firmware-Decompilation-Tool/)** · [Read the case study](https://ashwiniyer.com/projects/firmware-workbench)
 to edit band starts/ends, text, graphics and fonts, scan motion, and GPS records
 for verified R7 v153.150.127 firmware. The raw editor can patch any byte, inspect
 typed values, and import/export complete sections, including code and opaque data.
