@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef2f5" />
     <meta
       name="description"
-      content="Inspect your Uniden firmware and customize supported R7 messages and boot images locally in your browser."
+      content="Edit Uniden R7 firmware bands, text, graphics, scan motion, GPS records, and binary sections locally in your browser."
     />
     <meta
       http-equiv="Content-Security-Policy"
@@ -26,25 +26,20 @@
       <a
         class="source-link"
         href="https://github.com/Ashwin-Iyer1/Uniden-Firmware-Decompilation-Tool"
-        >View source
-        <svg aria-hidden="true" viewBox="0 0 20 20">
-          <path d="M5 15 15 5M5 5h10v10" /></svg
-      ></a>
+        >View source <span aria-hidden="true">↗</span></a
+      >
     </header>
-
     <main id="workbench" class="page-width">
       <section class="intro" aria-labelledby="page-title">
         <div>
-          <h1 id="page-title">Make your R7<br />feel like yours.</h1>
+          <h1 id="page-title">Inside your R7.</h1>
           <p class="intro-copy">
-            Personalize the startup screen and display labels in your firmware.
-            Inspect your file, make a few changes, and download a new copy.
+            Tune band boundaries. Redraw the display. Edit the bytes behind it
+            all. A local workspace for your own firmware.
           </p>
         </div>
         <div class="local-note">
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5zM12 14v3" />
-          </svg>
+          <span class="local-symbol" aria-hidden="true">◇</span>
           <div>
             <strong>Your file stays with you.</strong>
             <p>
@@ -54,78 +49,254 @@
           </div>
         </div>
       </section>
-
       <div id="error" class="error-message" role="alert" hidden></div>
-      <div class="workbench">
-        <div class="controls-column">
+      <section
+        id="upload-panel"
+        class="upload-panel landing-upload"
+        aria-labelledby="upload-title"
+      >
+        <div class="upload-copy">
+          <h2 id="upload-title">Open your firmware</h2>
+          <p>
+            Known R7 v153.150.127 files unlock the mapped editors. Any binary
+            can be opened in the raw editor.
+          </p>
+          <ul class="capability-list">
+            <li>Band starts and ends</li>
+            <li>Text and bitmap resources</li>
+            <li>Scan animation and GPS database</li>
+            <li>Every section and every byte</li>
+          </ul>
+        </div>
+        <div id="drop-zone" class="drop-zone">
+          <span class="bin-symbol" aria-hidden="true">.bin</span>
+          <p class="drop-title">Drop a Uniden .bin file here</p>
+          <p class="subtle">Or choose it from your device. Up to 32 MB.</p>
+          <button id="choose-file" type="button" class="button primary">
+            Choose firmware
+          </button>
+        </div>
+      </section>
+      <input
+        id="firmware-file"
+        type="file"
+        accept=".bin,application/octet-stream"
+        hidden
+      />
+      <section
+        id="loaded-panel"
+        class="loaded-panel"
+        aria-label="Loaded firmware"
+        hidden
+      >
+        <div class="loaded-file">
+          <span class="file-badge" aria-hidden="true">.bin</span>
+          <div>
+            <p id="file-name" class="file-name"></p>
+            <p id="file-summary" class="subtle"></p>
+          </div>
+        </div>
+        <div class="file-controls">
+          <button id="undo" class="button secondary" disabled>Undo</button
+          ><button id="reset-all" class="text-button" disabled>Reset all</button
+          ><button id="choose-another" class="text-button">
+            Load another file
+          </button>
+        </div>
+        <p id="compatibility" class="compatibility"></p>
+      </section>
+      <div id="editor-shell" class="editor-shell" hidden>
+        <nav
+          class="editor-nav"
+          role="tablist"
+          aria-label="Firmware editors"
+          aria-orientation="vertical"
+        >
+          <button
+            id="tab-overview"
+            role="tab"
+            aria-controls="panel-overview"
+            aria-selected="true"
+            data-panel="overview"
+          >
+            <span>Overview</span>
+          </button>
+          <button
+            id="tab-bands"
+            role="tab"
+            aria-controls="panel-bands"
+            aria-selected="false"
+            tabindex="-1"
+            data-panel="bands"
+          >
+            <span>Band boundaries</span>
+          </button>
+          <button
+            id="tab-text"
+            role="tab"
+            aria-controls="panel-text"
+            aria-selected="false"
+            tabindex="-1"
+            data-panel="text"
+          >
+            <span>Text</span>
+          </button>
+          <button
+            id="tab-graphics"
+            role="tab"
+            aria-controls="panel-graphics"
+            aria-selected="false"
+            tabindex="-1"
+            data-panel="graphics"
+          >
+            <span>Graphics</span>
+          </button>
+          <button
+            id="tab-scan"
+            role="tab"
+            aria-controls="panel-scan"
+            aria-selected="false"
+            tabindex="-1"
+            data-panel="scan"
+          >
+            <span>Scan motion</span>
+          </button>
+          <button
+            id="tab-gps"
+            role="tab"
+            aria-controls="panel-gps"
+            aria-selected="false"
+            tabindex="-1"
+            data-panel="gps"
+          >
+            <span>GPS database</span>
+          </button>
+          <button
+            id="tab-raw"
+            role="tab"
+            aria-controls="panel-raw"
+            aria-selected="false"
+            tabindex="-1"
+            data-panel="raw"
+          >
+            <span>Raw / sections</span>
+          </button>
+          <button
+            id="tab-review"
+            role="tab"
+            aria-controls="panel-review"
+            aria-selected="false"
+            tabindex="-1"
+            data-panel="review"
+          >
+            <span>Review &amp; download</span
+            ><span id="change-badge" class="change-badge">0</span>
+          </button>
+        </nav>
+        <div class="editor-content">
+          <div id="draft-bar" class="draft-bar" hidden>
+            <p id="draft-note"></p>
+            <button id="discard-draft" class="text-button">
+              Discard this draft
+            </button>
+          </div>
           <section
-            id="upload-panel"
-            class="upload-panel"
-            aria-labelledby="upload-title"
+            id="panel-overview"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-overview"
+            tabindex="0"
           >
             <div class="section-heading">
-              <h2 id="upload-title">Start with your firmware</h2>
-              <span class="step-label">Load</span>
+              <h2>Your firmware, unpacked.</h2>
+              <span class="step-label">Local session</span>
             </div>
-            <div id="drop-zone" class="drop-zone">
-              <svg class="file-icon" aria-hidden="true" viewBox="0 0 40 48">
-                <path d="M8 2h16l10 10v34H6V2zM24 2v12h10M14 24h12M14 31h12" />
-              </svg>
-              <p class="drop-title">Drop a Uniden .bin file here</p>
-              <p class="subtle">Or choose it from your device. Up to 32 MB.</p>
-              <button id="choose-file" type="button" class="button primary">
-                Choose firmware
-              </button>
-              <input
-                id="firmware-file"
-                type="file"
-                accept=".bin,application/octet-stream"
-                hidden
-              />
-            </div>
-            <p class="support-note">
-              <span class="status-dot" aria-hidden="true"></span>Editing
-              supports R7 v153.150.127. Other recognized versions can be
-              inspected.
-            </p>
-          </section>
-
-          <section
-            id="loaded-panel"
-            class="loaded-panel"
-            aria-labelledby="loaded-title"
-            hidden
-          >
-            <div class="section-heading">
-              <h2 id="loaded-title">Your firmware</h2>
-              <button id="choose-another" type="button" class="text-button">
-                Load another file
-              </button>
-            </div>
-            <div class="loaded-file">
-              <span class="file-badge" aria-hidden="true">.bin</span>
+            <div class="overview-grid">
               <div>
-                <p id="file-name" class="file-name"></p>
-                <p id="file-summary" class="subtle"></p>
+                <p class="panel-description">
+                  Use the editors to change mapped resources, or work directly
+                  with decoded sections and file bytes. Apply an edit to add it
+                  to your downloadable copy.
+                </p>
+                <dl class="overview-stats">
+                  <div>
+                    <dt>Container</dt>
+                    <dd id="container-state"></dd>
+                  </div>
+                  <div>
+                    <dt>Named editors</dt>
+                    <dd id="profile-state"></dd>
+                  </div>
+                  <div>
+                    <dt>Applied operations</dt>
+                    <dd id="operation-count">0</dd>
+                  </div>
+                </dl>
+                <p class="field-help">
+                  Modified firmware is experimental and has not been tested on
+                  hardware. A valid container does not prove that changed code
+                  or radio parameters will run correctly.
+                </p>
               </div>
+              <figure class="device-figure">
+                <div class="device">
+                  <div class="device-top">
+                    <span>R7</span>
+                    <div class="device-buttons" aria-hidden="true">
+                      <i></i><i></i><i></i>
+                    </div>
+                  </div>
+                  <div class="display-bezel">
+                    <div class="display-surface">
+                      <canvas
+                        id="logo-preview"
+                        width="176"
+                        height="60"
+                        aria-label="Current boot image"
+                        role="img"
+                      ></canvas>
+                      <p id="preview-empty">
+                        Boot image available<br />with a known R7 profile
+                      </p>
+                    </div>
+                  </div>
+                  <div class="device-bottom" aria-hidden="true">
+                    <span class="device-light"></span
+                    ><span class="device-grille"></span>
+                  </div>
+                </div>
+                <figcaption>
+                  Current boot image. Edit it in Graphics.
+                </figcaption>
+              </figure>
             </div>
-            <p id="compatibility" class="compatibility"></p>
+            <details class="reference-block">
+              <summary>Continue editing a previously modified R7 file</summary>
+              <p class="field-help">
+                Load an unmodified, matching R7 reference to identify the layout
+                after code changes. This checks the reference and section
+                layout; it does not verify your modified bytes or hardware
+                behavior.
+              </p>
+              <button id="choose-reference" class="button secondary">
+                Choose original reference</button
+              ><input id="reference-file" type="file" accept=".bin" hidden />
+              <p id="reference-status" class="field-help"></p>
+            </details>
             <details id="firmware-details" class="file-details">
-              <summary>File details</summary>
+              <summary>Section map and file fingerprint</summary>
               <dl class="hash-detail">
-                <dt>SHA-256 of original file</dt>
+                <dt>SHA-256 of session input</dt>
                 <dd id="file-hash"></dd>
               </dl>
               <div class="table-scroll">
                 <table>
-                  <caption class="visually-hidden">
-                    Firmware sections
-                  </caption>
                   <thead>
                     <tr>
-                      <th scope="col">Section</th>
-                      <th scope="col">Version</th>
-                      <th scope="col">Size</th>
+                      <th>Section</th>
+                      <th>File offset</th>
+                      <th>Version</th>
+                      <th>Size</th>
                     </tr>
                   </thead>
                   <tbody id="sections-body"></tbody>
@@ -133,217 +304,729 @@
               </div>
             </details>
           </section>
-
           <section
-            id="text-editor"
-            class="text-editor"
-            aria-labelledby="text-title"
+            id="panel-bands"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-bands"
+            tabindex="0"
             hidden
           >
             <div class="section-heading">
-              <h2 id="text-title">Make it personal</h2>
-              <span class="step-label">Edit</span>
+              <h2>Band boundaries</h2>
+              <span class="step-label">DSP table</span>
             </div>
-            <p class="section-description">
-              Use letters, numbers, and standard punctuation.
+            <p class="panel-description">
+              Edit the 33 mapped start and end frequencies in MHz, with 0.001
+              MHz precision. Records can be shared by multiple modes; changing a
+              bound does not establish new radio hardware coverage.
             </p>
-            <div class="field">
-              <div class="field-label">
-                <label for="selfTest">Self-test message</label
-                ><span id="selfTest-count" class="character-count">0 / 11</span>
+            <p class="profile-required" hidden></p>
+            <div class="named-content">
+              <div class="toolbar">
+                <label class="search-label"
+                  >Find a band
+                  <input
+                    id="band-search"
+                    type="search"
+                    placeholder="Index, band, or frequency" /></label
+                ><button id="apply-bands" class="button primary">
+                  Apply band changes
+                </button>
               </div>
-              <input
-                id="selfTest"
-                name="selfTest"
-                type="text"
-                maxlength="11"
-                autocomplete="off"
-                spellcheck="false"
-                aria-describedby="selfTest-help selfTest-count selfTest-error"
-                disabled
-              />
-              <p id="selfTest-help" class="field-help">
-                Replaces the “Self Test” text.
+              <p id="band-status" class="field-help">
+                Offsets refer to the decoded DSP section.
               </p>
-              <p id="selfTest-error" class="field-error" hidden></p>
-            </div>
-            <div class="field">
-              <div class="field-label">
-                <label for="owner1">Alert display label 1</label
-                ><span id="owner1-count" class="character-count">0 / 19</span>
+              <div class="table-scroll band-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Record</th>
+                      <th>DSP offset</th>
+                      <th>Type</th>
+                      <th>Start MHz</th>
+                      <th>End MHz</th>
+                      <th>IF constant (raw)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bands-body"></tbody>
+                </table>
               </div>
-              <input
-                id="owner1"
-                name="owner1"
-                type="text"
-                maxlength="19"
-                autocomplete="off"
-                spellcheck="false"
-                aria-describedby="owner1-count owner1-error"
-                disabled
-              />
-              <p id="owner1-error" class="field-error" hidden></p>
-            </div>
-            <div class="field">
-              <div class="field-label">
-                <label for="owner2">Alert display label 2</label
-                ><span id="owner2-count" class="character-count">0 / 19</span>
-              </div>
-              <input
-                id="owner2"
-                name="owner2"
-                type="text"
-                maxlength="19"
-                autocomplete="off"
-                spellcheck="false"
-                aria-describedby="owner2-help owner2-count owner2-error"
-                disabled
-              />
-              <p id="owner2-help" class="field-help">
-                Replace the “Alert Display #1” and “Alert Display #2” menu
-                labels.
-              </p>
-              <p id="owner2-error" class="field-error" hidden></p>
             </div>
           </section>
-        </div>
-
-        <section class="preview-column" aria-labelledby="preview-title">
-          <div class="section-heading">
-            <h2 id="preview-title">Your startup screen</h2>
-            <span class="preview-spec">176 × 60 pixels</span>
-          </div>
-          <figure class="device-figure">
-            <div class="device">
-              <div class="device-top">
-                <span>R7</span>
-                <div class="device-buttons" aria-hidden="true">
-                  <i></i><i></i><i></i>
-                </div>
-              </div>
-              <div class="display-bezel">
-                <div class="display-surface">
-                  <canvas
-                    id="logo-preview"
-                    width="176"
-                    height="60"
-                    role="img"
-                    aria-label="Boot logo preview"
-                  ></canvas>
-                  <p id="preview-empty">Your boot image<br />appears here</p>
-                </div>
-              </div>
-              <div class="device-bottom" aria-hidden="true">
-                <span class="device-light"></span
-                ><span class="device-grille"></span>
-              </div>
+          <section
+            id="panel-text"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-text"
+            tabindex="0"
+            hidden
+          >
+            <div class="section-heading">
+              <h2>Text resources</h2>
+              <span class="step-label">Fixed-size strings</span>
             </div>
-            <figcaption id="preview-caption">
-              A preview of the boot image stored in your file.
-            </figcaption>
-          </figure>
-          <div id="logo-editor" class="logo-editor" hidden>
-            <div class="image-actions">
-              <button id="choose-logo" type="button" class="button secondary">
-                Choose image</button
-              ><button
-                id="reset-logo"
-                type="button"
-                class="text-button"
-                disabled
-              >
-                Reset logo</button
-              ><input
+            <p class="profile-required" hidden></p>
+            <div class="named-content">
+              <p class="panel-description">
+                Edit printable text within its existing storage. Candidates can
+                include diagnostic messages and code-adjacent data. Format
+                placeholders must remain intact.
+              </p>
+              <details class="quick-text" open>
+                <summary>Common display labels</summary>
+                <div id="quick-fields" class="quick-fields"></div>
+                <button id="apply-text" class="button primary">
+                  Apply text drafts
+                </button>
+              </details>
+              <div class="toolbar">
+                <label
+                  >Section
+                  <select id="text-section"></select></label
+                ><label class="search-label"
+                  >Search text
+                  <input
+                    id="text-search"
+                    type="search"
+                    placeholder="Message or offset"
+                /></label>
+              </div>
+              <p id="text-count" class="field-help"></p>
+              <div class="table-scroll string-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Offset</th>
+                      <th>Bytes</th>
+                      <th>Candidate text</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="strings-body"></tbody>
+                </table>
+              </div>
+              <div class="pager">
+                <button id="text-prev" class="button secondary">Previous</button
+                ><span id="text-page"></span
+                ><button id="text-next" class="button secondary">Next</button>
+              </div>
+              <form id="string-form" class="edit-form" hidden>
+                <h3>Edit selected string</h3>
+                <p id="string-location" class="field-help"></p>
+                <label
+                  >Text
+                  <input
+                    id="string-value"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false" /></label
+                ><button id="apply-string" class="button primary" type="submit">
+                  Apply text drafts
+                </button>
+              </form>
+            </div>
+          </section>
+          <section
+            id="panel-graphics"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-graphics"
+            tabindex="0"
+            hidden
+          >
+            <div class="section-heading">
+              <h2>Graphics &amp; bitmaps</h2>
+              <span class="step-label">Preview, import, paint</span>
+            </div>
+            <p class="profile-required" hidden></p>
+            <div class="named-content">
+              <p class="panel-description">
+                Replace mapped images, inspect font glyphs, or select a custom
+                bitmap range. Coordinates are decoded section offsets. Apply a
+                preview to write it to the firmware.
+              </p>
+              <label class="wide-label"
+                >Resource
+                <select id="graphics-preset"></select
+              ></label>
+              <div class="form-grid graphics-settings">
+                <label
+                  >Section
+                  <select id="graphics-section"></select></label
+                ><label
+                  >Offset (hex)
+                  <input
+                    id="graphics-offset"
+                    value="0x2d526"
+                    spellcheck="false" /></label
+                ><label
+                  >Width
+                  <input
+                    id="graphics-width"
+                    type="number"
+                    min="1"
+                    max="1024"
+                    value="176" /></label
+                ><label
+                  >Height
+                  <input
+                    id="graphics-height"
+                    type="number"
+                    min="1"
+                    max="1024"
+                    value="60" /></label
+                ><label
+                  >Format
+                  <select id="graphics-format">
+                    <option value="2bpp">2-bit grayscale</option>
+                    <option value="1bpp">1-bit monochrome</option>
+                    <option value="rgb565">RGB565 color</option>
+                  </select></label
+                ><button id="graphics-read" class="button secondary">
+                  Read bitmap
+                </button>
+              </div>
+              <div class="bitmap-stage">
+                <canvas
+                  id="bitmap-preview"
+                  width="176"
+                  height="60"
+                  tabindex="0"
+                  role="img"
+                  aria-label="Editable bitmap preview. Use image import to replace the bitmap."
+                ></canvas>
+              </div>
+              <p id="graphics-details" class="field-help"></p>
+              <div class="toolbar">
+                <label
+                  >Paint color
+                  <input id="paint-color" type="color" value="#ffffff" /></label
+                ><label class="checkbox-label"
+                  ><input id="paint-enabled" type="checkbox" /> Paint
+                  pixels</label
+                ><label class="checkbox-label"
+                  ><input id="image-smoothing" type="checkbox" /> Smooth
+                  resizing</label
+                >
+              </div>
+              <div class="action-row">
+                <button id="choose-logo" class="button secondary">
+                  Import image</button
+                ><button id="export-image" class="button secondary">
+                  Export PNG</button
+                ><button id="reset-logo" class="text-button">
+                  Discard preview</button
+                ><button id="apply-graphics" class="button primary" disabled>
+                  Apply bitmap
+                </button>
+              </div>
+              <input
                 id="logo-file"
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 hidden
               />
+              <p id="logo-status" class="field-help" role="status"></p>
             </div>
-            <p id="logo-help" class="field-help">
-              PNG, JPEG, or WebP. Images are resized to 176 × 60 and converted
-              to four shades of gray.
-            </p>
-            <p id="logo-status" class="logo-status" aria-live="polite"></p>
-          </div>
-          <div class="scope-note">
-            <strong>A focused first release</strong>
-            <p>
-              Customize messages and the boot image. The desktop tools in the
-              repository cover deeper firmware analysis and other resources.
-            </p>
-          </div>
-        </section>
-      </div>
-
-      <section id="review" class="review" aria-labelledby="review-title" hidden>
-        <div class="section-heading">
-          <h2 id="review-title">Review your changes</h2>
-          <span class="step-label">Save a copy</span>
-        </div>
-        <p id="no-changes" class="subtle">
-          No changes yet. Your original file stays untouched.
-        </p>
-        <ul id="review-list" class="review-list"></ul>
-        <div class="download-area">
-          <div>
-            <p class="experimental-note">
-              <strong>Experimental firmware edits.</strong> Modified files have
-              not been tested on hardware. Keep your original and use your
-              established update procedure.
-            </p>
-            <p
-              id="status"
-              class="status-message"
-              role="status"
-              aria-live="polite"
-            >
-              Choose firmware to begin.
-            </p>
-          </div>
-          <div class="download-actions">
-            <button id="reset-all" type="button" class="text-button" disabled>
-              Reset all changes</button
-            ><button
-              id="prepare-download"
-              type="button"
-              class="button primary"
-              disabled
-            >
-              Prepare downloads
-            </button>
-          </div>
-        </div>
-        <div id="downloads" class="downloads" hidden>
-          <div class="download-ready">
-            <span class="ready-check" aria-hidden="true">✓</span>
-            <div>
-              <strong>Your edited copy is ready.</strong>
-              <p>
-                Save the change manifest alongside it for a record of your
-                edits.
+          </section>
+          <section
+            id="panel-scan"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-scan"
+            tabindex="0"
+            hidden
+          >
+            <div class="section-heading">
+              <h2>Scan motion</h2>
+              <span class="step-label">20 frames × 8 columns</span>
+            </div>
+            <p class="profile-required" hidden></p>
+            <div class="named-content">
+              <p class="panel-description">
+                Each cell chooses a scan tile level from 0 to 4. The motion
+                table lives in compressed startup data; applying an edit
+                rebuilds that data within its existing allocation.
               </p>
+              <div class="toolbar">
+                <button id="apply-scan" class="button primary">
+                  Apply scan motion</button
+                ><label
+                  >Preview frame
+                  <input
+                    id="scan-frame"
+                    type="range"
+                    min="0"
+                    max="19"
+                    value="0" /></label
+                ><span id="scan-frame-label">Frame 1</span>
+              </div>
+              <div
+                id="scan-preview"
+                class="scan-preview"
+                aria-label="Scan level preview"
+              ></div>
+              <div class="table-scroll">
+                <table class="scan-table">
+                  <thead>
+                    <tr>
+                      <th>Frame</th>
+                      <th>1</th>
+                      <th>2</th>
+                      <th>3</th>
+                      <th>4</th>
+                      <th>5</th>
+                      <th>6</th>
+                      <th>7</th>
+                      <th>8</th>
+                    </tr>
+                  </thead>
+                  <tbody id="scan-body"></tbody>
+                </table>
+              </div>
             </div>
-          </div>
-          <div class="download-links">
-            <a id="download-firmware" class="button primary"
-              >Download modified firmware</a
-            ><a id="download-manifest" class="manifest-link"
-              >Download change manifest</a
+          </section>
+          <section
+            id="panel-gps"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-gps"
+            tabindex="0"
+            hidden
+          >
+            <div class="section-heading">
+              <h2>GPS camera database</h2>
+              <span class="step-label">LRDB records</span>
+            </div>
+            <p class="profile-required" hidden></p>
+            <div class="named-content">
+              <p class="panel-description">
+                Add, edit, or remove records. Applying changes rebuilds the
+                database, updates its count and date, and sorts by descending
+                latitude. Existing flag fields remain available to edit.
+              </p>
+              <div class="toolbar">
+                <label class="search-label"
+                  >Find a record
+                  <input
+                    id="gps-search"
+                    type="search"
+                    placeholder="Latitude, longitude, or type" /></label
+                ><label>Database date <input id="gps-date" type="date" /></label
+                ><button id="apply-gps" class="button primary" disabled>
+                  Apply database
+                </button>
+              </div>
+              <div class="action-row">
+                <button id="gps-add" class="button secondary">Add record</button
+                ><button id="gps-import" class="button secondary">
+                  Import CSV</button
+                ><button id="gps-export" class="button secondary">
+                  Export CSV</button
+                ><input
+                  id="gps-csv-file"
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                />
+              </div>
+              <p id="gps-count" class="field-help"></p>
+              <div class="table-scroll">
+                <table class="gps-table">
+                  <thead>
+                    <tr>
+                      <th>Latitude</th>
+                      <th>Longitude</th>
+                      <th>Type</th>
+                      <th>Speed</th>
+                      <th>Heading</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="gps-body"></tbody>
+                </table>
+              </div>
+              <div class="pager">
+                <button id="gps-prev" class="button secondary">Previous</button
+                ><span id="gps-page"></span
+                ><button id="gps-next" class="button secondary">Next</button>
+              </div>
+              <form id="gps-form" class="edit-form" hidden>
+                <h3 id="gps-form-title">Edit GPS record</h3>
+                <div class="form-grid">
+                  <label
+                    >Latitude
+                    <input
+                      id="gps-lat"
+                      type="number"
+                      step="any"
+                      min="-90"
+                      max="90"
+                      required /></label
+                  ><label
+                    >Longitude
+                    <input
+                      id="gps-lon"
+                      type="number"
+                      step="any"
+                      min="-180"
+                      max="180"
+                      required /></label
+                  ><label
+                    >Type (1 speed / 2 red light)
+                    <input
+                      id="gps-type"
+                      type="number"
+                      min="0"
+                      max="255"
+                      required /></label
+                  ><label
+                    >Speed
+                    <input
+                      id="gps-speed"
+                      type="number"
+                      min="0"
+                      max="255"
+                      required /></label
+                  ><label
+                    >Heading
+                    <input
+                      id="gps-heading"
+                      type="number"
+                      min="1"
+                      max="360"
+                      required /></label
+                  ><label
+                    >Flag 2
+                    <input
+                      id="gps-f2"
+                      type="number"
+                      min="0"
+                      max="255"
+                      required /></label
+                  ><label
+                    >Category
+                    <input
+                      id="gps-category"
+                      type="number"
+                      min="0"
+                      max="255"
+                      required /></label
+                  ><label
+                    >Reserved word
+                    <input
+                      id="gps-reserved"
+                      type="number"
+                      min="0"
+                      max="65535"
+                      required
+                  /></label>
+                </div>
+                <div class="action-row">
+                  <button
+                    class="button secondary"
+                    id="gps-cancel"
+                    type="button"
+                  >
+                    Cancel</button
+                  ><button id="gps-save" class="button primary" type="submit">
+                    Save record to draft
+                  </button>
+                </div>
+              </form>
+              <p id="gps-status" class="field-help" role="status"></p>
+            </div>
+          </section>
+          <section
+            id="panel-raw"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-raw"
+            tabindex="0"
+            hidden
+          >
+            <div class="section-heading">
+              <h2>Every byte, directly.</h2>
+              <span class="step-label">Raw / sections</span>
+            </div>
+            <p class="panel-description">
+              Patch instructions, constants, fonts, sound payloads, headers, or
+              any other bytes. Unknown structures remain raw. Edits here can
+              invalidate the container or make the firmware unusable.
+            </p>
+            <div class="toolbar">
+              <label class="search-label"
+                >Region
+                <select id="raw-section"></select></label
+              ><label class="checkbox-label"
+                ><input id="raw-decoded" type="checkbox" checked /> Decode known
+                section encoding</label
+              >
+            </div>
+            <p id="raw-description" class="field-help"></p>
+            <div class="toolbar">
+              <label
+                >View offset (hex)
+                <input
+                  id="raw-view-offset"
+                  value="0x0"
+                  spellcheck="false" /></label
+              ><button id="raw-go" class="button secondary">Go</button
+              ><button
+                id="raw-prev"
+                class="button secondary"
+                aria-label="Previous 256 bytes"
+              >
+                Previous</button
+              ><button
+                id="raw-next"
+                class="button secondary"
+                aria-label="Next 256 bytes"
+              >
+                Next
+              </button>
+            </div>
+            <pre
+              id="hex-view"
+              class="hex-view"
+              tabindex="0"
+              aria-label="Hexadecimal and ASCII bytes"
+            ></pre>
+            <details class="raw-search">
+              <summary>Search this region</summary>
+              <div class="toolbar">
+                <label
+                  >Search as
+                  <select id="raw-search-type">
+                    <option value="hex">Hex bytes</option>
+                    <option value="ascii">ASCII text</option>
+                  </select></label
+                ><label class="search-label"
+                  >Find
+                  <input
+                    id="raw-search-value"
+                    spellcheck="false"
+                    placeholder="55 4E 49 44 45 4E" /></label
+                ><button id="raw-find" class="button secondary">
+                  Find next
+                </button>
+              </div>
+              <p id="raw-search-result" class="field-help"></p>
+            </details>
+            <label class="wide-label"
+              >Mapped location
+              <select id="raw-location">
+                <option value="">Choose a known coordinate…</option>
+                <option value="dsp_nu:0x4c50:u32">
+                  DSP tuner scale — 0x4c50, uint32
+                </option>
+                <option value="dsp_nu:0x400:u16">
+                  DSP version word — 0x400, uint16
+                </option>
+                <option value="dsp_nu:0xdf44:hex">
+                  DSP sweep groups — 0xdf44, raw bytes
+                </option>
+                <option value="ui_nu:0x1d29c:hex">
+                  UI factory defaults function — 0x1d29c, instructions
+                </option>
+                <option value="ui_nu:0x0:hex">
+                  UI interrupt vectors — 0x0, raw bytes
+                </option>
+                <option value="dsp_nu:0x0:hex">
+                  DSP interrupt vectors — 0x0, raw bytes
+                </option>
+              </select></label
             >
-          </div>
+            <form id="raw-form" class="edit-form">
+              <h3>Patch bytes</h3>
+              <div class="form-grid">
+                <label
+                  >Patch offset (hex)
+                  <input
+                    id="raw-patch-offset"
+                    value="0x0"
+                    required
+                    spellcheck="false" /></label
+                ><label
+                  >Input format
+                  <select id="raw-type">
+                    <option value="hex">Hex bytes</option>
+                    <option value="ascii">ASCII</option>
+                    <option value="u8">Unsigned 8-bit</option>
+                    <option value="u16">Unsigned 16-bit, little endian</option>
+                    <option value="u32">Unsigned 32-bit, little endian</option>
+                    <option value="f32">Float32, little endian</option>
+                  </select></label
+                >
+              </div>
+              <label
+                >New value
+                <textarea
+                  id="raw-value"
+                  rows="3"
+                  required
+                  spellcheck="false"
+                  placeholder="00 01 02 FF"
+                ></textarea></label
+              ><label
+                >Change label
+                <input
+                  id="raw-label"
+                  placeholder="Describe this patch"
+                  maxlength="120" /></label
+              ><button id="apply-raw" class="button primary" type="submit">
+                Apply byte patch
+              </button>
+            </form>
+            <details class="section-tools">
+              <summary>Import / export this region</summary>
+              <p class="field-help">
+                Section replacement preserves its size and re-encodes it when
+                decoding is enabled. Select the whole file for exact on-disk
+                bytes.
+              </p>
+              <div class="action-row">
+                <button id="raw-export" class="button secondary">
+                  Export region .bin</button
+                ><button id="raw-import" class="button secondary">
+                  Replace region .bin</button
+                ><input
+                  id="raw-file"
+                  type="file"
+                  accept=".bin,application/octet-stream"
+                  hidden
+                />
+              </div>
+            </details>
+            <details id="sound-directory" class="section-tools" hidden>
+              <summary>Sound clip directory</summary>
+              <p class="field-help">
+                ISD3800 clip spans in the decoded sound database. This
+                identifies encoded clip bytes; it does not provide a WAV
+                encoder. Select a clip to inspect or patch its bytes.
+              </p>
+              <div class="toolbar">
+                <label class="search-label"
+                  >Clip
+                  <select id="sound-clip"></select></label
+                ><button id="sound-jump" class="button secondary">
+                  Inspect clip bytes</button
+                ><button id="sound-export" class="button secondary">
+                  Export clip bytes
+                </button>
+              </div>
+              <p id="sound-status" class="field-help"></p>
+            </details>
+            <details class="section-tools">
+              <summary>Insert / remove whole-file bytes</summary>
+              <p class="field-help">
+                Uses absolute file offsets and encoded bytes, regardless of the
+                selected region. Length fields and addresses are not
+                automatically repaired.
+              </p>
+              <form id="splice-form">
+                <div class="form-grid">
+                  <label
+                    >File offset (hex)
+                    <input id="splice-offset" value="0x0" required /></label
+                  ><label
+                    >Bytes to remove (decimal)
+                    <input
+                      id="splice-delete"
+                      type="number"
+                      min="0"
+                      value="0"
+                      required
+                  /></label>
+                </div>
+                <label
+                  >Bytes to insert (hex; empty to delete)
+                  <textarea
+                    id="splice-bytes"
+                    rows="2"
+                    spellcheck="false"
+                  ></textarea></label
+                ><button
+                  id="apply-splice"
+                  class="button secondary"
+                  type="submit"
+                >
+                  Apply file splice
+                </button>
+              </form>
+            </details>
+          </section>
+          <section
+            id="panel-review"
+            class="editor-panel"
+            role="tabpanel"
+            aria-labelledby="tab-review"
+            tabindex="0"
+            hidden
+          >
+            <div class="section-heading">
+              <h2>Review &amp; download</h2>
+              <span id="review-count" class="step-label"></span>
+            </div>
+            <p class="panel-description">
+              Your download includes applied edits. Fields or image previews
+              awaiting Apply are not included. Keep the change manifest with
+              your edited copy.
+            </p>
+            <p id="review-integrity" class="compatibility"></p>
+            <p id="no-changes" class="subtle">No applied changes yet.</p>
+            <ol id="review-list" class="operation-list"></ol>
+            <p class="experimental-note">
+              <strong>Experimental firmware edits.</strong> Container and
+              profile checks are structural checks, not hardware validation.
+              Keep your original firmware and use your established update
+              procedure.
+            </p>
+            <div class="action-row">
+              <button id="prepare-download" class="button primary" disabled>
+                Prepare downloads
+              </button>
+            </div>
+            <div id="downloads" class="downloads" hidden>
+              <div class="download-ready">
+                <span class="ready-check" aria-hidden="true">✓</span>
+                <div>
+                  <strong>Your edited copy is ready.</strong>
+                  <p>Firmware plus a detailed change report.</p>
+                </div>
+              </div>
+              <div class="download-links">
+                <a id="download-firmware" class="button primary"
+                  >Download modified firmware</a
+                ><a id="download-manifest" class="manifest-link"
+                  >Download change manifest</a
+                >
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
-      <p id="load-status" class="load-status" role="status" aria-live="polite">
-        Ready for your file.
-      </p>
+      </div>
+      <div class="session-status">
+        <p id="status" role="status" aria-live="polite">
+          Choose firmware to begin.
+        </p>
+        <button id="review-shortcut" class="text-button" hidden>
+          Review changes
+        </button>
+      </div>
+      <p
+        id="load-status"
+        class="visually-hidden"
+        role="status"
+        aria-live="polite"
+      ></p>
       <noscript
         ><p class="error-message">
           Enable JavaScript to inspect and edit firmware in your browser.
         </p></noscript
       >
     </main>
-
     <footer class="site-footer page-width">
       <p>An independent community project.<br />Not affiliated with Uniden.</p>
       <nav aria-label="Project">

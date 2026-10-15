@@ -25,7 +25,7 @@ jobs:
       - name: Check Python protocol regressions
         run: python3 -m unittest discover -s tests -v
       - name: Check browser firmware engine
-        run: node --test tests/web_firmware.test.mjs
+        run: node --test tests/*.test.mjs
       - name: Check browser module syntax
         run: node --check web/app.mjs
       - name: Upload only the public web application

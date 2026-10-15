@@ -191,3 +191,30 @@ the investigation or presenting automatic decompilation as complete semantic rec
   order, Ka polarity, checksum character validation, and mask-selection priority.
 - A bounded headless timeout test stopped its owned process group and left failure provenance,
   without a success marker. A fresh UI import with the final scripts reproduced all 920 starts.
+
+
+## Full browser editor follow-up
+
+The browser workbench now uses the documented decoded layouts for all 33 DSP band
+records, fixed-slot ASCII candidates, 234 bitmap/font presets, the compressed
+20-by-8 scan table, and GPS LRDB records. Raw editing also exposes all section bytes,
+headers and trailers, with typed patches, same-size section replacement, and file
+splices. The ISD3800 directory provides 250 clip spans for raw inspection/export.
+
+A fresh REA MCP/Ghidra session rechecked DSP routines `0x47e0` and `0x5cc0` while
+connecting those controls to the existing analysis. The former contains PLL
+frequency/divider arithmetic; the latter traverses 20-byte sweep records. These
+are static evidence, not proof of new RF coverage or hardware acceptance:
+
+- `0x47e0`: `ev_726c013ff3c55bf7ff2262f1d8a2662365276d83b9145195813b9476106ec1c7`.
+- `0x5cc0`: `ev_1f28f47879b2e2d160d58b187d468ef6b76d7f8bc486f64e3b55e40547be1bf3`.
+- Complete local records: `decoded/rea/web-editor-profile/`.
+
+JavaScript format checks include independent Python vectors and exact round trips.
+With the private stock file, all 234 bitmap presets round-trip without changing
+a byte; all 13,050 GPS records survive CSV export/import at Float32 precision;
+unchanged scan data preserves its compressed bytes and padding. Browser integration
+checks reconstruct downloaded band, text, image, scan, GPS and code edits with the
+Python tools and compare complete firmware bytes. No firmware or derived assets
+are included in the website, Git repository or public CI. See
+[WEB_EDITOR.md](WEB_EDITOR.md) for supported operations and remaining limits.

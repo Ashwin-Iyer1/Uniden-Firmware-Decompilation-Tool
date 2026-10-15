@@ -35,9 +35,12 @@ This project is unaffiliated with and unendorsed by Uniden.
 ## Web editor
 
 **[Open the firmware workbench](https://ashwin-iyer1.github.io/Uniden-Firmware-Decompilation-Tool/)**
-to select your own `.bin`, edit verified R7 v153.150.127 text and boot-logo slots,
-and download a modified copy with a change report. Files stay in your browser.
-Other versions are inspection-only when their container format is recognized.
+to edit band starts/ends, text, graphics and fonts, scan motion, and GPS records
+for verified R7 v153.150.127 firmware. The raw editor can patch any byte, inspect
+typed values, and import/export complete sections, including code and opaque data.
+Download a modified copy and a change report; files stay in your browser.
+Named R7 controls require a verified layout or a verified original reference.
+Unrecognized files remain editable in raw mode, without claims about their meaning.
 See [the web editor guide](docs/WEB_EDITOR.md) for scope, verification and local setup.
 
 ---
