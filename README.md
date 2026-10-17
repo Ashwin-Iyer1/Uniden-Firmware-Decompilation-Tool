@@ -59,13 +59,20 @@ offline integrity checks; they do not prove device acceptance.
 
 **[Open the firmware workbench](https://ashwin-iyer1.github.io/Uniden-Firmware-Decompilation-Tool/)** · [Read the case study](https://ashwiniyer.com/projects/firmware-workbench)
 
-Use the workbench to edit band starts/ends, text, graphics and fonts, scan motion, and GPS records
-for verified R7 v153.150.127 firmware. The raw editor can patch any byte, inspect
-typed values, and import/export complete sections, including code and opaque data.
+Use the workbench to edit auto-mute timing and defaults, band starts/ends, text,
+graphics and fonts, scan motion, and GPS records for verified R7 v153.150.127 firmware.
+Every Python firmware-editing command has a [browser workflow](docs/WEB_EDITOR.md#python-editing-parity).
+Open text by decoded offset to edit short, empty, long, or Latin-1 fields while
+preserving printf placeholders. The raw editor can import Python patch files, patch
+any byte, inspect typed values, and import/export complete sections, including code
+and opaque data. Patch-file comments and ordered overlaps apply as one undoable edit.
 Download a modified copy and a change report; files stay in your browser.
 Try the built-in invented practice file without supplying firmware. Review net
 byte changes side by side, inspect each range, and undo before downloading.
-Named R7 controls require a verified layout or a verified original reference.
+Named R7 resource controls require a verified layout or a verified original reference.
+Settings uses the Python editor's stricter complete-UI identity check, which a
+reference cannot bypass. Apply settings before UI text, graphics, or scan-motion
+changes. Complete settings patches remain recognized when reopened.
 Unrecognized files remain editable in raw mode, without claims about their meaning.
 See [the web editor guide](docs/WEB_EDITOR.md) for scope, verification and local setup.
 
@@ -85,7 +92,9 @@ See [the web editor guide](docs/WEB_EDITOR.md) for scope, verification and local
 | **Inspect / unpack the container** | `r7_unpack.py` | [docs/FORMAT.md](docs/FORMAT.md) |
 | **DSP serial messages** (band enables, Ka-segment mask — runtime, no reflash) | `r7_ipc.py` | [docs/DSP_PROTOCOL.md](docs/DSP_PROTOCOL.md) |
 
-Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
+Raw byte/patch edits of any section are possible via `r7_patch.py patch` or the
+browser's **Raw / sections → Import a Python patch file**. The sound tool only
+inspects and extracts audio; neither interface provides a verified WAV encoder.
 
 **Want the complete picture?** [docs/WHAT_YOU_CAN_CHANGE.md](docs/WHAT_YOU_CAN_CHANGE.md) classifies
 *everything* in the firmware as data-edit / code-patch / runtime-config / not-editable, and
@@ -100,7 +109,8 @@ exports. The [latest REA findings](docs/REA_FINDINGS.md) cover 1,654 recovered f
 the direct UI→DSP configuration path, and corrected Ka polarity, byte order, and mask gating.
 The [manual-guided settings analysis](docs/R7_SETTINGS.md) traces both default-setting
 paths, serial settings storage, and the auto-mute timer/volume chain. Its guarded CLI
-can preview or apply patches to the verified UI image; defaults do not override saved
+and browser **Settings & timing** panel edit the same four settings in the verified
+UI image; defaults do not override saved
 preferences on normal startup. These changes have offline validation, not device testing.
 
 ```sh
@@ -187,8 +197,8 @@ very welcome.
 ## Repository layout
 
 ```
-tools/     the CLIs — editing: r7_patch r7_gfx r7_gpsdb r7_scan r7_bands r7_sound;
-           container: r7_unpack; analysis: r7_alertsim r7_lzss r7_iplink
+tools/     the CLIs — editing: r7_patch r7_gfx r7_gpsdb r7_scan r7_bands r7_settings;
+           container: r7_unpack; analysis: r7_sound r7_alertsim r7_lzss r7_iplink
 docs/      guides: FORMAT, SETUP, FLASHING; per-capability (TEXT, GRAPHICS, GPS_DATABASE,
            SCAN_ANIMATION, BAND_FILTERING, SOUND); FIRMWARE_MAP + WHAT_YOU_CAN_CHANGE;
            REVERSE_ENGINEERING

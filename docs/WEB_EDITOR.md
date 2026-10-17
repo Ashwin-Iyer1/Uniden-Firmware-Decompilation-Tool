@@ -17,11 +17,12 @@ does not unlock profile-gated R7 controls.
 | Editor | What it changes | Coordinates / constraints |
 |---|---|---|
 | Band boundaries | All 33 DSP coefficient records: start and end frequencies | MHz input, exact 0.001 MHz steps; decoded DSP `0xdd34`, 16-byte records; low must not exceed high |
-| Text | Common labels and searchable NUL-terminated ASCII candidates in UI/DSP/GPS | Existing slot size; printable ASCII; printf placeholders must remain intact |
+| Settings & timing | Auto-mute delay, default theme, default mute volume and signal level | Same instruction, coupled-site, range and complete UI hash checks as `r7_settings.py`; apply before other UI edits |
+| Text | Common labels, searchable ASCII candidates, and NUL-terminated strings opened by offset in UI/DSP/GPS | Existing slot size; offset editor accepts Latin-1, including short and empty fields; printf placeholders must remain intact |
 | Graphics | Boot logo, backgrounds, badges, alert icons, signal bars, scan tiles, font glyphs, and custom bitmap ranges | 1-bit, 2-bit, or RGB565; fixed dimensions and byte allocation; import/export PNG and pixel painting |
 | Scan motion | 20 frames × 8 tile levels | Values 0–4; decompress/recompress startup data while preserving all other initialized RAM bytes |
 | GPS database | Add/edit/remove LRDB records, import/export CSV, update date | Float32 coordinates, record flags, latitude sorting, encoded count, footer and padding; container resizes as necessary |
-| Raw / sections | Any instruction, constant, pointer, header, trailer, audio payload or other byte | Hex/ASCII and little-endian typed values, offset navigation, search, same-size section replacement, file insertion/deletion |
+| Raw / sections | Any instruction, constant, pointer, header, trailer, audio payload or other byte | Hex/ASCII and little-endian typed values, Python patch-file import, offset navigation, search, same-size section replacement, file insertion/deletion |
 | Review | Applied operation history and exported file | Input/output hashes, byte differences, structural status and change descriptions |
 
 Frequency records are shared by multiple sweep modes. Their band type and IF
@@ -35,6 +36,74 @@ addresses and dimensions, with image contents read only from your file. Font gly
 presets preserve their separate width/advance bytes; those bytes are available in
 the raw editor. Custom geometry can address any in-bounds decoded bitmap range.
 
+### Python editing parity
+
+All firmware content edited by the Python commands has a browser workflow. The
+`r7_*` compatibility aliases provide the same operations as their `rseries_*` names.
+
+| Python editing command | Browser workflow |
+|---|---|
+| `r7_settings.py apply --set NAME=INTEGER` | **Settings & timing**: all four settings, applied as complete coupled instruction groups |
+| `rseries_bands.py setfreq` | **Band boundaries**: edit each record's low/high MHz values |
+| `rseries_patch.py setstr` | **Text**: quick labels, candidate search, or **Open a string by offset** for any bounded NUL-terminated field |
+| `rseries_patch.py patch` | **Raw / sections → Import a Python patch file**: choose a file or paste its lines |
+| `rseries_gfx.py replace` | **Graphics**: select a preset or custom offset/dimensions/format, import an image, then **Apply bitmap** |
+| `rseries_scan.py encode` | **Graphics → All 30 scan tiles**: import the 11×240 tile sheet; individual tile presets are also editable |
+| `rseries_gpsdb.py build` | **GPS database**: import CSV, set the date, then apply the database |
+| `rseries_gpsdb.py add` | **GPS database**: add a record, then apply the database |
+
+The browser also edits the scan frame table and arbitrary encoded or decoded
+section bytes. Python inspection, decompilation, emulation, and runtime message
+construction are separate from editing firmware content. `rseries.py repack`
+reproduces an unchanged extraction; it does not accept modified pieces.
+
+### Settings and text by offset
+
+Settings accepts an auto-mute delay of **100–30000 nominal milliseconds**, theme
+indices **0–7**, mute volume **0–7**, and mute signal level **0–8**. The stock theme
+differs between reset and invalid-storage initialization; leaving the theme
+unchanged preserves that difference. Choosing a theme updates both sites together.
+Saved preferences override default edits on normal startup. The runtime delay
+changes the running code; the ten-second reset gap is not edited.
+
+**Apply settings before UI text, graphics, or scan-motion edits.** Settings uses
+the Python editor's strict complete-UI identity gate, allowing only its own complete
+instruction patches. Other editors can build on that result. A reference file
+does not bypass the settings check. See [settings and timing](R7_SETTINGS.md).
+
+In Text, select a section and expand **Open a string by offset**. The hexadecimal
+offset addresses decoded bytes. The field extends through its first NUL and all
+following zero padding, matching Python's field-size calculation without the
+candidate scanner's 512-byte cap. One- and two-character strings, empty fields,
+and longer strings are available this way. Latin-1 characters map directly to
+bytes, including `0x80`–`0x9f`; unrepresentable characters and embedded NULs are
+rejected. The editor preserves printf tokens and NUL-fills the remaining capacity.
+Raw byte editing remains available for changes outside those text constraints.
+
+### Python patch files
+
+Choose the target region and decoding mode in Raw / sections before importing or
+pasting patch lines. Each line contains a hexadecimal offset and contiguous byte
+pairs, with optional `#` comments; blank lines are ignored:
+
+```text
+0400 deadbeef # four bytes at decoded offset 0x400
+0402 1234     # later overlapping bytes replace earlier bytes
+```
+
+The whole file is validated before any change is applied. Out-of-bounds or malformed
+lines reject the operation; valid lines apply in order as one undoable operation.
+No bytes outside the selected patch ranges are changed in the selected coordinate
+system. With decoding enabled, the corresponding encoded four-byte groups may
+differ while surrounding decoded bytes remain intact. The limits are 10,000 patch
+lines and a 32 MiB patch file.
+
+A patch draft retains its original region and decoding selection. Changing its
+target or making another raw edit is rejected until the draft is applied or cleared.
+If another editor changes that region while the draft is open, applying the stale
+draft is rejected. Clear the patch text to discard it and reopen against the current
+bytes.
+
 ## Profile recognition and previously edited files
 
 Named editors target **R7 v153.150.127**. Recognition checks the container, model,
@@ -42,6 +111,10 @@ versions, logical lengths, and decoded code fingerprints. Documented graphics,
 font, quick-text and band-boundary ranges are excluded from the matching hash.
 Compressed UI startup data is independently decoded and checked outside the scan
 frame table. This lets those resource edits reopen without requiring stock assets.
+Complete settings patches also reopen without a reference: recognition validates
+each instruction's opcode, register, range and coupled values before normalizing
+only those instructions for the code fingerprint. Partial coupled patches do not
+pass this recognition check.
 
 A session opened from recognized firmware retains its layout knowledge while you
 edit, provided the code-section layout remains intact. This does not certify the
@@ -49,6 +122,8 @@ modified code. Other string edits and arbitrary code patches can prevent automat
 recognition when reopening a saved file. Supply a matching, verified original
 reference from Overview to identify that file's layout again. Reference mode
 checks the reference and matching section framing, not equivalence of edited code.
+The Settings & timing editor independently requires its stricter complete-UI hash,
+even when the other named editors are enabled by a reference.
 
 Unknown or structurally malformed files remain editable in raw mode. No R7 offsets
 are automatically applied to them. Raw header or file-length edits can break the
@@ -96,13 +171,17 @@ The editor can modify all bytes, but the meaning of all bytes has not been recov
 Factory defaults and logic changes are instruction patches; there is no verified
 editable default-settings table or C-to-firmware compiler in this application.
 Current on-device settings and learned GPS lockouts are not contained in this `.bin`.
-The actual persistent-settings storage path remains partly unresolved.
+The [settings analysis](R7_SETTINGS.md) traces reset initialization, serialization,
+and startup restoration through a serial-memory path. The physical storage chip
+and attached-device behavior have not been verified.
 
 Sound is an ISD3800 flash image with a proprietary ADPCM predictor. The raw editor
 lists all 250 mapped clips, with jumps to their byte ranges and individual exports.
 Its encoded or decoded bytes can be replaced, but this site does not claim to convert WAV audio to
 a working voice bank. Alternate STM32 sections are accessible as raw data; that
 does not make them executable on the R7's Nuvoton MCUs.
+The Python sound tool only inspects and extracts audio, including approximate WAV
+decoding; it has no verified WAV-to-firmware encoder to expose in the browser.
 
 Modified firmware is experimental and has not been tested on a detector. Structural
 validation and round-trip equality do not prove hardware acceptance or correct RF
@@ -134,15 +213,26 @@ PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
 R7_FIXTURE=/absolute/path/to/your/stock/firmware.bin \
 WEB_URL=http://127.0.0.1:4173 \
 node tests/web_browser.mjs
+
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+R7_FIXTURE=/absolute/path/to/your/stock/firmware.bin \
+WEB_URL=http://127.0.0.1:4173 \
+node tests/web_parity_browser.mjs
 ```
 
 Browser tests compare actual downloaded edits with the independent Python codecs,
 exercise malformed/unknown raw inputs, and monitor for uploads. Artifacts stay under
 ignored `decoded/web-qa/`. Public CI uses synthetic fixtures; private firmware is
 never uploaded to CI or included in deployment.
+The parity suite compares settings, Latin-1 text and ordered patch-file downloads
+against Python, and checks settings reimport, rejected partial patches, stale drafts,
+undo, and responsive layouts. These are browser and byte-integrity checks, not
+hardware validation.
 
 Implementation: `binary.mjs` supplies the encoding transform; `firmware.mjs` owns
 container parsing and edit sessions; `profile.mjs` holds researched layout metadata;
-`resources.mjs` implements resource formats; `app.mjs` connects them to the interface.
+`resources.mjs` implements resource formats; `settings.mjs` guards instruction
+patches; `edits.mjs` handles patch files and explicit string fields; `app.mjs`
+connects them to the interface.
 The [Pages workflow](../.github/workflows/pages.yml) runs checks before publishing
 **only `web/`** from `main`. Pull requests run checks without publishing.

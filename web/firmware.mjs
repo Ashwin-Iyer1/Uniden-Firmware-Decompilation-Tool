@@ -18,6 +18,7 @@ import {
   normalizedUiData,
 } from "./profile.mjs";
 import { differenceSummary, differencePage } from "./comparison.mjs";
+import { normalizeSettingsUi } from "./settings.mjs";
 export { MAX_FILE_SIZE, decodeOldModel, encodeOldModel } from "./binary.mjs";
 export const LOGO_WIDTH = 176;
 export const LOGO_HEIGHT = 60;
@@ -323,9 +324,16 @@ export async function inspectFirmware(value) {
       profile.key,
       bytes.subarray(section.offset, section.offset + section.size),
     );
-    const fingerprint = decoded.slice();
+    let fingerprint = decoded.slice();
     if (name === "ui_nu") {
       ui = decoded;
+      try {
+        fingerprint = normalizeSettingsUi(decoded);
+      } catch (error) {
+        supported = false;
+        reason = `Inspection only: ${error.message}`;
+        break;
+      }
       for (const field of TEXT_FIELDS)
         fingerprint.fill(0, field.offset, field.offset + field.size);
       fingerprint.fill(0, LOGO_OFFSET, LOGO_OFFSET + LOGO_SIZE);
@@ -566,9 +574,12 @@ async function recognizeWorkspace(bytes, container) {
       profile.key,
       bytes.subarray(section.offset, section.offset + section.size),
     );
-    const fingerprint = decoded.slice();
+    let fingerprint = decoded.slice();
     if (name === "ui_nu") {
       try {
+        // Restore only complete, bounded settings groups to their exact stock
+        // instructions. The remaining code stays covered by the profile hash.
+        fingerprint = normalizeSettingsUi(decoded);
         if ((await sha256(normalizedUiData(decoded))) !== SCAN_DATA_HASH) {
           return {
             known: false,

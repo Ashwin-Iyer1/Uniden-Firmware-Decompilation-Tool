@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#eef2f5" />
     <meta
       name="description"
-      content="Edit Uniden R7 firmware bands, text, graphics, scan motion, GPS records, and binary sections locally in your browser."
+      content="Edit Uniden R7 firmware settings, bands, text, graphics, scan motion, GPS records, and binary sections locally in your browser."
     />
     <meta
       http-equiv="Content-Security-Policy"
@@ -63,6 +63,7 @@
           </p>
           <ul class="capability-list">
             <li>Band starts and ends</li>
+            <li>Auto-mute timing and reset defaults</li>
             <li>Text and bitmap resources</li>
             <li>Scan animation and GPS database</li>
             <li>Every section and every byte</li>
@@ -145,6 +146,10 @@
             data-panel="bands"
           >
             <span>Band boundaries</span>
+          </button>
+          <button id="tab-settings" role="tab" aria-controls="panel-settings"
+            aria-selected="false" tabindex="-1" data-panel="settings">
+            <span>Settings &amp; timing</span>
           </button>
           <button
             id="tab-text"
@@ -369,6 +374,32 @@
               </div>
             </div>
           </section>
+          <section id="panel-settings" class="editor-panel" role="tabpanel"
+            aria-labelledby="tab-settings" tabindex="0" hidden>
+            <div class="section-heading">
+              <h2>Settings &amp; timing</h2>
+              <span class="step-label">Auto mute and defaults</span>
+            </div>
+            <p class="panel-description">Choose how long an alert sounds before auto mute,
+              and set the display and mute defaults used by the reset routines.</p>
+            <p id="settings-unavailable" class="compatibility" role="status"></p>
+            <div id="settings-content" hidden>
+              <p class="field-help">Saved preferences override these defaults during normal startup.
+                The delay changes the running firmware; the recovery gap remains 10 seconds.</p>
+              <form id="settings-form" class="edit-form">
+                <div id="settings-fields" class="settings-fields"></div>
+                <button id="apply-settings" class="button primary" type="submit" disabled>Apply settings</button>
+              </form>
+              <p id="settings-status" class="field-help" role="status"></p>
+            </div>
+            <details class="section-tools">
+              <summary>Combining settings with other edits</summary>
+              <p class="field-help">Apply settings before changing UI text, images, or scan motion.
+                Like the Python settings editor, these controls require the original UI code and
+                data, allowing only complete settings patches. Other editors can then build on
+                those changes. Loading a reference does not bypass this check.</p>
+            </details>
+          </section>
           <section
             id="panel-text"
             class="editor-panel"
@@ -407,6 +438,16 @@
                     placeholder="Message or offset"
                 /></label>
               </div>
+              <details class="section-tools">
+                <summary>Open a string by offset</summary>
+                <p class="field-help">Use the selected section and a decoded hexadecimal offset.
+                  This also opens short, empty, and Latin-1 strings. The field ends after its
+                  NUL terminator and following zero padding; format placeholders remain protected.</p>
+                <div class="toolbar">
+                  <label>String offset (hex)<input id="text-offset" value="0x2268" spellcheck="false" /></label>
+                  <button id="text-read" type="button" class="button secondary">Open string</button>
+                </div>
+              </details>
               <p id="text-count" class="field-help"></p>
               <div class="table-scroll string-table">
                 <table>
@@ -431,11 +472,11 @@
                 <p id="string-location" class="field-help"></p>
                 <label
                   >Text
-                  <input
+                  <textarea
                     id="string-value"
-                    type="text"
+                    rows="2"
                     autocomplete="off"
-                    spellcheck="false" /></label
+                    spellcheck="false"></textarea></label
                 ><button id="apply-string" class="button primary" type="submit">
                   Apply text drafts
                 </button>
@@ -842,8 +883,11 @@
                 <option value="dsp_nu:0xdf44:hex">
                   DSP sweep groups — 0xdf44, raw bytes
                 </option>
+                <option value="ui_nu:0x1cf48:hex">
+                  UI factory-reset defaults — 0x1cf48, instructions
+                </option>
                 <option value="ui_nu:0x1d29c:hex">
-                  UI factory defaults function — 0x1d29c, instructions
+                  UI invalid-storage defaults — 0x1d29c, instructions
                 </option>
                 <option value="ui_nu:0x0:hex">
                   UI interrupt vectors — 0x0, raw bytes
@@ -894,6 +938,22 @@
                 Apply byte patch
               </button>
             </form>
+            <details class="section-tools">
+              <summary>Import a Python patch file</summary>
+              <p class="field-help">Each line contains a hexadecimal offset and hexadecimal bytes,
+                separated by whitespace. Blank lines and # comments are supported. Patches use
+                the region and decoding selected above and apply together as one undoable edit.</p>
+              <form id="patch-file-form" class="edit-form">
+                <div class="action-row">
+                  <button id="choose-patch-file" type="button" class="button secondary">Choose patch file</button>
+                  <input id="patch-file" type="file" accept=".txt,.patch,text/plain" hidden />
+                </div>
+                <label>Patch lines<textarea id="patch-text" rows="5" spellcheck="false"
+                  placeholder="2268 524f41442054455354000000 # text bytes"></textarea></label>
+                <p id="patch-status" class="field-help" role="status"></p>
+                <button id="apply-patch-file" class="button primary" type="submit" disabled>Apply patch file</button>
+              </form>
+            </details>
             <details class="section-tools">
               <summary>Import / export this region</summary>
               <p class="field-help">
