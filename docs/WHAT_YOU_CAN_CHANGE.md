@@ -1,5 +1,8 @@
 # What you can change
 
+> Structured editing is verified for R7 only. For R4W/R8W inspection, extraction
+> and unchanged reproduction, see [R4W/R8W support](R4W_R8W.md).
+
 The [browser workbench](https://ashwin-iyer1.github.io/Uniden-Firmware-Decompilation-Tool/)
 now edits every byte of a supplied `.bin`, with structured controls for researched
 R7 v153.150.127 resources. “Editable bytes” does not mean every field's purpose is

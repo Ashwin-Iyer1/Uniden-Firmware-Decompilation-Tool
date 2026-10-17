@@ -34,4 +34,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Local container extraction manifests / research output
+manifest.json
+*.wav
+*.adpcm
+
 r8_work/

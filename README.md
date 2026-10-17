@@ -1,4 +1,4 @@
-# Uniden R7 Firmware Toolkit
+# Uniden R-series Firmware Toolkit
 
 Open tools for **decoding, editing, and re-packing Uniden R7 radar-detector firmware** — so you
 can customize your *own* detector: edit menu/display text, swap the boot logo and other bitmaps,
@@ -31,6 +31,29 @@ exactly), so any change you make is precisely and only your change.
 This project is unaffiliated with and unendorsed by Uniden.
 
 ---
+
+## Model support
+
+| Model | Supported operations | Limits |
+|---|---|---|
+| R7 v153.150.127 | Container decoding, editing and byte-exact repacking | Named editing offsets are version-specific |
+| R4W v127.128.123 / R8W v142.113.127 | Model-aware inspection, raw extraction, ESP32-C3 image validation and unchanged reproduction | Main/DSP/GPS code and AEUS camera records remain opaque; modified repacking is unsupported |
+
+Use `tools/rseries.py` for complete extraction manifests and hash-checked
+reproduction. The canonical CLI names are `rseries_*`; existing `r7_*` commands
+remain compatible entry points. R7 editors reject other model IDs before editing.
+See [R4W/R8W support](docs/R4W_R8W.md) and
+[firmware findings](docs/FIRMWARE_FINDINGS.md) for component maps and limits.
+
+```sh
+python3 tools/rseries.py inspect /path/to/firmware.bin
+python3 tools/rseries.py extract /path/to/firmware.bin decoded/extraction
+python3 tools/rseries.py repack decoded/extraction /tmp/reproduced.bin
+```
+
+Extraction requires an empty directory. Repacking verifies the original raw
+pieces and whole-image SHA256 and refuses an existing output file. These are
+offline integrity checks; they do not prove device acceptance.
 
 ## Web editor
 
@@ -79,8 +102,8 @@ the direct UI→DSP configuration path, and corrected Ka polarity, byte order, a
 
 ## Requirements
 
-- **Python 3.9+**
-- **Pillow** (only for the graphics/scan tools): `pip install -r requirements.txt`
+- **Python 3.9+** for the standard-library tools; **Python 3.10+** for graphics/scan tools
+- **Pillow 12.3.0+** (only for the graphics/scan tools): `pip install -r requirements.txt`
 - A **micro-USB data cable** and the **Silicon Labs CP210x VCP driver** to talk to the detector
   ([Silicon Labs downloads](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers)).
 - Optional, only if you want to re-run the reverse engineering: **Ghidra** + **capstone**
@@ -147,8 +170,7 @@ recovery instructions before flashing.
 
 The decode/encode math is version-independent, but tools that target a *feature* hard-code offsets
 found in **`R7_v153.150.127`** (boot logo `0x2d526`, self-test string `0x2268`, scan tiles
-`0x29b6e`, …). On a different firmware version these move. `r7_unpack.py parse` still works on any
-R-series image; to re-locate feature offsets on another version, follow
+`0x29b6e`, …). On a different firmware version these move. `rseries_unpack.py parse` inspects supported R-series containers; to re-locate feature offsets on another version, follow
 [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md). PRs adding a version→offsets table are
 very welcome.
 

@@ -1,5 +1,9 @@
 # Firmware map — the master reference
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 A complete, region-by-region map of the Uniden R7 combined firmware image, reverse-engineered from
 **`R7_v153.150.127_db260702.bin`** (5,121,719 bytes). This is the reference companion to
 [FORMAT.md](FORMAT.md) (container framing) and the per-capability guides
@@ -16,7 +20,7 @@ A complete, region-by-region map of the Uniden R7 combined firmware image, rever
 - **File offset** — a byte position in the raw `.bin`.
 - **Decoded / internal offset** — a position *inside* a section after `decode_old_model(key, …)`.
   For the code sections this equals the MCU's own flash address (load base `0x0`). The tools
-  (`r7_patch.py`, `r7_gfx.py`, `r7_scan.py`) take decoded-section offsets.
+  (`rseries_patch.py`, `rseries_gfx.py`, `rseries_scan.py`) take decoded-section offsets.
 - **SRAM address** — a runtime RAM address (base `0x20000000`); *not* a position in the file.
 
 ---
@@ -98,11 +102,10 @@ Final 12 bytes at file `0x4e26ab`: `['NMGF'][u32 0][u32 0x64=100]`. Middle `0` (
 records) marks it as a terminator; trailing `100` = merge-container format/version, **not** a
 checksum. File ends exactly at NMGF+12.
 
-> Parser note: the legacy `r7_unpack.py parse()` skips the STSD footer incorrectly and
-> excludes an exact final 12-byte record with its `while pos < len-12` condition, so it
-> does not reliably report NMGF. It also hardcodes version 0 for ST* sections, missing
-> their `model7/ver153·150·127` trailers. The browser parser checks these boundaries
-> explicitly. Unverified SUSD framing is not inferred from STSD.
+> Parser note: `rseries_unpack.py` (also exposed as `r7_unpack.py`) now validates
+> the STSD footer and reports NMGF and component versions. The browser parser
+> checks its supported framing independently. These checks do not establish
+> firmware authenticity or hardware acceptance.
 
 ### 0.5 No in-file integrity field identified
 
@@ -307,7 +310,7 @@ routine (code-patch).
 
 267 blitter call sites (`FUN_0x5690` 1-bpp, `FUN_0x56dc` 2-bpp, `FUN_0x9d9c` RGB565) resolve to 120
 distinct static `(x,y,w,h,ptr)` draws. Whole ui_nu round-trips byte-exact and no checksum guards it,
-so every bitmap/glyph is an in-place data-edit (`r7_gfx.py`).
+so every bitmap/glyph is an in-place data-edit (`rseries_gfx.py`).
 
 | Asset group | Offset(s) | Dims / count | Format |
 |---|---|---|---|
@@ -335,7 +338,7 @@ labels `@0x6db0` (9) / `@0x8bd0` (8); band-badge icons `@0x76e0` / `@0x77c4` (7)
 Genuine UI text lives only in flash: two diagnostic strings (`0x830`, `0x1b1e8`–`0x1b243`), the main
 menu/label table `0x1934`–`0xc460` (~165 strings), a laser source-name pool `0x7578`–`0x760c`, and
 `"Over Speed"` @`0x7c23`. All are latin1/ASCII, NUL-terminated, 4-byte aligned. Each is `data-edit`
-in place via `r7_patch.py setstr` — see [TEXT.md](TEXT.md). Editable field = bytes to next non-null
+in place via `rseries_patch.py setstr` — see [TEXT.md](TEXT.md). Editable field = bytes to next non-null
 data; **max new chars = field − 1**. `%`-format specifiers (`%2d`, `%3d`, `%4d`, `%8d`, `%x`,
 `(%d)`) are load-bearing and must be preserved. Notable string groups:
 
@@ -400,7 +403,7 @@ builder's zero comparisons, **config zero = menu On = SUB wire bit one**.
 | Ka 8 | `[0xe7]` | 5 | 1 |
 | Ka 9 | `[0xe8]` | 5 | 0 |
 
-`tools/r7_iplink.py` now uses this polarity in `config_from_ka` and `decode_config`; the previous
+`tools/rseries_iplink.py` now uses this polarity in `config_from_ka` and `decode_config`; the previous
 helpers inverted On/Off even though their raw `build_config` bit positions were correct. Its
 legacy result key `ka_segments_swept` denotes menu settings that are On. This does not prove
 which DSP mask bit receives each setting or that a physical RF sweep occurred. See
@@ -557,7 +560,7 @@ Frequencies are stored **directly in kHz** (verified: `rec0 type=1 = X 10.499–
 **pointer into this table**, and the PLL (`FUN_0x47e0`) is programmed straight from `freq_high` via a
 25 MHz-reference fractional-N divider — **no hidden harmonic multiplier**, so these numbers *are* the
 RF frequencies. **Editing `freq_low`/`freq_high` moves a band** — a clean length-preserving data-edit
-(`tools/r7_bands.py`). Caveat: records are shared across modes (the X record is referenced by nearly
+(`tools/rseries_bands.py`). Caveat: records are shared across modes (the X record is referenced by nearly
 every group), so one edit affects every mode using it; `band_type`/`ifconst` are hardware-coupled,
 leave them. Full guide: [BAND_FILTERING.md](BAND_FILTERING.md). (Older note: the K center ≈`24136` MHz
 appears at `0x15ec0` too, but the authoritative editable data is this table.)
@@ -565,7 +568,7 @@ appears at `0x15ec0` too, but the authoritative editable data is this table.)
 ### 2.7 Serial frame protocol  ·  confidence: high
 
 Distinct from the text console of §2.1, but **on the same UART**. Full write-up in
-[DSP_PROTOCOL.md](DSP_PROTOCOL.md); codec in `tools/r7_ipc.py`.
+[DSP_PROTOCOL.md](DSP_PROTOCOL.md); codec in `tools/rseries_ipc.py`.
 
 Frame = `<opcode|0x80>` + a fixed-length payload of **uppercase ASCII-hex** characters. Bit 7 marks
 a frame start and resynchronises the receiver (`0xd68c`); since hex payload is 7-bit, payload can
@@ -673,7 +676,7 @@ prompt N"). Decode with `decode_old_model(**225**, …)` — **not 255** (255 wa
 the retracted "8-bit PCM" theory). The decoded image is: a `0xCX` **memory header** (`0xcf`), then a
 **250-entry voice-prompt directory** (`(END,START)` u24-LE pairs from `0x1A`, first START at `0x17`),
 the compressed clips, then `0xFF` padding (content ends `0x1f3a35` on v153). Silence/timing decode
-correctly; the exact ADPCM predictor is **proprietary (in-chip), not yet bit-exact** — `r7_sound.py`
+correctly; the exact ADPCM predictor is **proprietary (in-chip), not yet bit-exact** — `rseries_sound.py`
 extracts raw `.adpcm` + best-effort WAV, and bit-exact edits need Nuvoton's ISD-VPE tool. Guide
 [SOUND.md](SOUND.md). Presence gated by header flag bit0 (§0.1), described by the SNDD record.
 (`STSD` is the STM32 sibling's voice bank — irrelevant to R7.)
@@ -732,7 +735,7 @@ File `0x255a46`, ~204 KB. Fully enumerated from all **13,050 real records**. Com
 
 Everything in the DB is `data-edit`; the only `not-editable` pieces are the `"LRDB"` / `"DRSWGDB"`
 format tags (region-key selectors: `LRDB`=210 US, `DFDB`=194 NZ, `IRDB`=226 IL) and the reserved
-`0xFFFF` terminator. Body `encode(decode) == orig` byte-exact. `r7_gpsdb.py` handles decode, edit,
+`0xFFFF` terminator. Body `encode(decode) == orig` byte-exact. `rseries_gpsdb.py` handles decode, edit,
 re-sort, re-pad, POI-count, length field, and date automatically. The speed-display unit (km/h vs
 mph) is a **runtime user setting** (`Speed Unit: km/h`/`mph`, ui_nu `0x1c74`/`0x1c94`).
 
@@ -768,7 +771,7 @@ byte overlap because pointers differ. STGP's reset handler uses VFP float ops (`
 `vmov.f32`) → **Cortex-M4F with hardware FPU**, a different/newer silicon class than the R7's own
 gps_nu. STSD is the same 2 MB slot as sound_dbnu; its internal audio format is uncracked.
 
-> `r7_unpack.py` currently assigns `key=None` to STUI/STDS/STGP so `extract` writes them **raw**. They
+> `rseries_unpack.py` currently assigns `key=None` to STUI/STDS/STGP so `extract` writes them **raw**. They
 > would decode with keys 182/184/183 (disassemble at base `0x08000000`; enable FPU for STGP) — but
 > they are the sibling model's firmware and have **no effect on an R7**.
 
@@ -820,8 +823,8 @@ by themselves, establish a connection. The UI→DSP producer is now traced expli
 | gps_nu ↔ GPS chip | — | `0x40071000` | NMEA input and `$PMTK`/`$PGKC` configuration |
 
 The UI sends DSP settings directly as uppercase ASCII hex. No GPS relay is required by the
-recovered code. `tools/r7_iplink.py` models the separate SUB binary frames;
-`tools/r7_ipc.py` models DSP ASCII-hex frames. The UI call chain plus the matching DSP parser
+recovered code. `tools/rseries_iplink.py` models the separate SUB binary frames;
+`tools/rseries_ipc.py` models DSP ASCII-hex frames. The UI call chain plus the matching DSP parser
 establish a static logical route; physical PCB wiring and access from the external USB bridge
 remain unmeasured. These are runtime messages, not stored firmware data.
 

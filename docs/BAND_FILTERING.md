@@ -1,8 +1,12 @@
 # Band filtering — editing the RF detection frequencies
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 The R7's radar bands are **not** hardcoded magic — the DSP keeps its real RF detection windows in a
 plain **coefficient table** in `dsp_nu`, with frequencies stored **directly in kHz**. Moving or
-narrowing a band is a length-preserving **data-edit** with `r7_bands.py`.
+narrowing a band is a length-preserving **data-edit** with `rseries_bands.py`.
 
 > This is the DSP *frequency* half of band filtering. Turning whole bands or Ka segments on/off is a
 > **menu setting** (runtime, in EEPROM); the *sweep logic* that walks these records is code. See
@@ -25,12 +29,12 @@ The 20-byte sweep-schedule records' `+0x10` field is a **pointer** into this tab
 the kHz numbers here *are* the RF frequencies. Confirmed: `rec0 type=1 = X 10.499–10.551 GHz`,
 `rec1 type=2 = K 24.049–24.251 GHz`.
 
-## Tool: `r7_bands.py`
+## Tool: `rseries_bands.py`
 
 ```
-python3 tools/r7_bands.py dump    <fw>                                  # list all 33 records
-python3 tools/r7_bands.py setfreq <fw> <rec_idx> <lo_MHz> <hi_MHz> <out.bin>
-python3 tools/r7_bands.py verify  <orig_fw> <patched_fw>                # show the diff
+python3 tools/rseries_bands.py dump    <fw>                                  # list all 33 records
+python3 tools/rseries_bands.py setfreq <fw> <rec_idx> <lo_MHz> <hi_MHz> <out.bin>
+python3 tools/rseries_bands.py verify  <orig_fw> <patched_fw>                # show the diff
 ```
 
 `setfreq` writes only `freq_low`/`freq_high` of one record (8 bytes), re-encodes `dsp_nu` (key 184),
@@ -40,9 +44,9 @@ byte-identical to stock.
 ### Example — narrow the K band to reject a BSM frequency
 
 ```sh
-python3 tools/r7_bands.py dump R7_v153.150.127_db260702.bin        # find the K record index
+python3 tools/rseries_bands.py dump R7_v153.150.127_db260702.bin        # find the K record index
 # e.g. tighten K to 24.10–24.20 GHz on record 1:
-python3 tools/r7_bands.py setfreq R7_v153.150.127_db260702.bin 1 24100 24200 R7_kband.bin
+python3 tools/rseries_bands.py setfreq R7_v153.150.127_db260702.bin 1 24100 24200 R7_kband.bin
 ```
 
 ## ⚠️ Cautions (this is expert territory)

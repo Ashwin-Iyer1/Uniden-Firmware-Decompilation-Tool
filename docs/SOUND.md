@@ -1,5 +1,9 @@
 # Voice / alert audio — `sound_dbnu` (Nuvoton ISD3800)
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 > **This supersedes the earlier "raw 8-bit signed PCM" description.** That was reverse-engineered
 > from the **wrong container key** (255) and is incorrect: it produces noise, not audio. The section
 > is not PCM and is not editable as a simple byte swap.
@@ -60,13 +64,13 @@ predictors, block-reset scans, and frame widths 8–16). So the extractor's WAV 
 2. **One confirmed clip→word anchor.** With a single known mapping (e.g. "clip N = *Ka Band*"),
    the full step table is fittable from a Rosetta pair of (firmware clip, reference WAV).
 
-## Tool: `r7_sound.py`
+## Tool: `rseries_sound.py`
 
 ```
-python3 tools/r7_sound.py info    <fw>                 # format, key, clip count, padding
-python3 tools/r7_sound.py clips   <fw>                 # list the 250 voice prompts (real directory)
-python3 tools/r7_sound.py extract <fw> <out_dir>       # per clip: raw .adpcm + BEST-EFFORT .wav
-python3 tools/r7_sound.py raw     <fw> <out.bin>       # dump the decoded ISD3800 image
+python3 tools/rseries_sound.py info    <fw>                 # format, key, clip count, padding
+python3 tools/rseries_sound.py clips   <fw>                 # list the 250 voice prompts (real directory)
+python3 tools/rseries_sound.py extract <fw> <out_dir>       # per clip: raw .adpcm + BEST-EFFORT .wav
+python3 tools/rseries_sound.py raw     <fw> <out.bin>       # dump the decoded ISD3800 image
 ```
 
 `extract` writes both the **raw `.adpcm` blob** (exact bytes, for anyone continuing the codec work)

@@ -1,5 +1,9 @@
 # Editing the "Scan" idle animation
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 When Main Display is set to **Scan**, the R7 shows a small sweeping bar. It is **not** procedural —
 it's a **data-driven tile animation**, which is what makes it editable with a clean round-trip.
 
@@ -16,26 +20,26 @@ it's a **data-driven tile animation**, which is what makes it editable with a cl
 
 The **tiles** are the editable visual content; the choreography is left untouched by the tool.
 
-## Tool: `r7_scan.py`
+## Tool: `rseries_scan.py`
 
 ```
-python3 tools/r7_scan.py pull   <fw> <out_dir>      # tiles.png + scan_theme0/5.gif + framedata.txt
-python3 tools/r7_scan.py encode <fw> <tiles.png> <out.bin>
-python3 tools/r7_scan.py verify <fw>                # asserts a 0-diff round trip
+python3 tools/rseries_scan.py pull   <fw> <out_dir>      # tiles.png + scan_theme0/5.gif + framedata.txt
+python3 tools/rseries_scan.py encode <fw> <tiles.png> <out.bin>
+python3 tools/rseries_scan.py verify <fw>                # asserts a 0-diff round trip
 ```
 
 ## Pull, edit, re-encode
 
 ```sh
 # 1. Pull the current animation (30 tiles as a vertical strip, plus rendered GIFs)
-python3 tools/r7_scan.py pull R7_v153.150.127_db260702.bin scan_pull/
+python3 tools/rseries_scan.py pull R7_v153.150.127_db260702.bin scan_pull/
 
 # 2. Edit scan_pull/tiles.png — it's a 11 x (8*30) image, one 11x8 tile per row (0..29).
 #    Rows 0–4 = theme-0 states (empty→head), rows 25–29 = theme-5 states, etc.
 #    Recolor the "head" tiles, repaint the trail, whatever you like — keep each tile 11x8.
 
 # 3. Re-encode into a flashable firmware
-python3 tools/r7_scan.py encode R7_v153.150.127_db260702.bin scan_pull/tiles.png R7_scan.bin
+python3 tools/rseries_scan.py encode R7_v153.150.127_db260702.bin scan_pull/tiles.png R7_scan.bin
 ```
 
 ## The 0-diff guarantee
@@ -44,7 +48,7 @@ Tiles are uncompressed RGB565 and the ui_nu transpose is bijective, so `pull` �
 **unchanged** tiles reproduces the firmware **byte-for-byte**:
 
 ```sh
-python3 tools/r7_scan.py verify R7_v153.150.127_db260702.bin
+python3 tools/rseries_scan.py verify R7_v153.150.127_db260702.bin
 # -> round-trip pull->encode: 0 DIFF ✓ (byte-identical firmware)
 ```
 
@@ -58,10 +62,10 @@ image moves. (The compressed choreography in `.data` is not modified.)
 - Changing the **motion** (the sweep pattern) rather than the **look** means editing the
   choreography table `framedata[20][8]` (per-cell tile-state 0–4, at decompressed `.data` offset
   `0x298`), which lives in the **LZSS-compressed `.data` block1**. The compressor now exists —
-  **`tools/r7_lzss.py`** (verified: `decompress(compress(X)) == X`, and the output fits the
+  **`tools/rseries_lzss.py`** (verified: `decompress(compress(X)) == X`, and the output fits the
   `~0x128` B of `0xFF` headroom after the stock stream). So motion editing is now possible: decompress
-  block1 (`r7_scan.py:decompress` / flash `0x2f7ac`), edit the `framedata` bytes, re-`compress` with
-  `r7_lzss`, check it fits the budget, and splice the re-packed block back into `ui_nu`. It's a
+  block1 (`rseries_scan.py:decompress` / flash `0x2f7ac`), edit the `framedata` bytes, re-`compress` with
+  `rseries_lzss`, check it fits the budget, and splice the re-packed block back into `ui_nu`. It's a
   lower-level flow than tile editing (no turnkey command yet), but it is no longer blocked.
   Recoloring/redrawing the tiles still gives you a lot without touching the choreography.
 - Offsets (`0x29b6e`, the `.data` layout) are for `R7_v153.150.127`.

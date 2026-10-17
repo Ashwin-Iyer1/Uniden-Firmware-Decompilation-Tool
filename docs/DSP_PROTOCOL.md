@@ -1,5 +1,9 @@
 # The DSP serial protocol — band filtering without reflashing
 
+> **Model scope:** The layouts, offsets and procedures in this guide were verified
+> for R7 firmware. They are not established for R4W/R8W. See
+> [R4W/R8W support](R4W_R8W.md) for measured component maps and supported operations.
+
 The DSP MCU (`dsp_nu`) accepts a small set of **framed messages on its UART**. One of them,
 opcode `0x10`, is a complete radar configuration: which bands are enabled and **which of the nine
 Ka segments are swept**. The DSP applies it immediately.
@@ -7,7 +11,7 @@ Ka segments are swept**. The DSP applies it immediately.
 This matters because it is the one path to band filtering that is **not a firmware edit**. Nothing
 here reflashes anything — the settings live in RAM and are lost at reset.
 
-Tool: [`tools/r7_ipc.py`](../tools/r7_ipc.py) builds and decodes these frames.
+Tool: [`tools/rseries_ipc.py`](../tools/rseries_ipc.py) builds and decodes these frames.
 
 > **Not yet proven: whether you can reach this UART from outside the case.** See
 > [Reachability](#reachability) — read that before assuming any of this is usable over USB.
@@ -54,7 +58,7 @@ Tool: [`tools/r7_ipc.py`](../tools/r7_ipc.py) builds and decodes these frames.
 The framer uses these fixed lengths. For `0x0f`, `0x10`, and `0x11`, the dispatcher checks the
 checksum before their configuration handlers run. Configuration updates are **not transactional**:
 fields are parsed and applied in sequence, so a later malformed field can leave earlier changes
-in place. `r7_ipc.py` checks the documented XOR convention for every opcode; for the short
+in place. `rseries_ipc.py` checks the documented XOR convention for every opcode; for the short
 commands, its `checksum OK/BAD` output is a host-side calculation, not a prediction of the
 DSP's acceptance. The helper's short-command builder likewise emits that convention, without
 establishing the short command's argument semantics.
@@ -217,16 +221,16 @@ coefficient/schedule bytes in `dsp_nu.bin`.
 
 ```sh
 # what the DSP will accept
-python3 tools/r7_ipc.py opcodes
+python3 tools/rseries_ipc.py opcodes
 
 # build a configuration frame: only Ka segments 1, 3 and 5 swept
-python3 tools/r7_ipc.py config --ka 1,3,5
+python3 tools/rseries_ipc.py config --ka 1,3,5
 
 # decode the illustrative UI-compatible frame (checksum and fields)
-python3 tools/r7_ipc.py decode 903233303030373037303730383038303834313030303030313030383130303933
+python3 tools/rseries_ipc.py decode 903233303030373037303730383038303834313030303030313030383130303933
 
 # verify the codec against the format rules
-python3 tools/r7_ipc.py selftest
+python3 tools/rseries_ipc.py selftest
 ```
 
 `config` preserves its default `band_bits=0x0005` (bits 0 and 2), selecting the combined table.
