@@ -5,12 +5,19 @@
 *.bin
 *.zip
 
+# Downloaded R7/R8 manuals kept in the repository root
+/R7*.pdf
+/R8*.pdf
+
 # Extracted / generated assets (derived from copyrighted firmware)
 decoded/
 scan_pull/
 anim/
 *.png
 *.gif
+*.wav
+*.adpcm
+manifest.json
 # keep clean, hand-authored templates under examples/, ignore all other CSVs
 *.csv
 !examples/*.csv
@@ -19,6 +26,10 @@ anim/
 *.gpr
 *.rep
 *.lock
+
+# R8 analysis scratch (finished tools graduate to tools/, notes to docs/)
+r8_work/
+prior-art/
 
 # Python
 __pycache__/
@@ -33,10 +44,3 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
-
-# Local container extraction manifests / research output
-manifest.json
-*.wav
-*.adpcm
-
-r8_work/
