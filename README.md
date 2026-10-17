@@ -81,6 +81,7 @@ See [the web editor guide](docs/WEB_EDITOR.md) for scope, verification and local
 | **"Scan" idle animation** (the sweeping bar) | `r7_scan.py` | [docs/SCAN_ANIMATION.md](docs/SCAN_ANIMATION.md) |
 | **RF band frequencies** (move X/K/Ka detection windows) | `r7_bands.py` | [docs/BAND_FILTERING.md](docs/BAND_FILTERING.md) |
 | **Voice / alert audio inspection** (ISD3800 image; approximate playback) | `r7_sound.py` | [docs/SOUND.md](docs/SOUND.md) |
+| **Auto-mute delay and reset defaults** (theme, mute volume, signal-level gate) | `r7_settings.py` | [docs/R7_SETTINGS.md](docs/R7_SETTINGS.md) |
 | **Inspect / unpack the container** | `r7_unpack.py` | [docs/FORMAT.md](docs/FORMAT.md) |
 | **DSP serial messages** (band enables, Ka-segment mask — runtime, no reflash) | `r7_ipc.py` | [docs/DSP_PROTOCOL.md](docs/DSP_PROTOCOL.md) |
 
@@ -97,6 +98,15 @@ Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
 **Decompiled firmware:** `r7_decompile.py` creates persistent Ghidra projects and C/assembly
 exports. The [latest REA findings](docs/REA_FINDINGS.md) cover 1,654 recovered functions,
 the direct UI→DSP configuration path, and corrected Ka polarity, byte order, and mask gating.
+The [manual-guided settings analysis](docs/R7_SETTINGS.md) traces both default-setting
+paths, serial settings storage, and the auto-mute timer/volume chain. Its guarded CLI
+can preview or apply patches to the verified UI image; defaults do not override saved
+preferences on normal startup. These changes have offline validation, not device testing.
+
+```sh
+python3 tools/r7_settings.py inspect R7_v153.150.127_db260702.bin
+python3 tools/r7_settings.py plan R7_v153.150.127_db260702.bin --set auto_mute_delay_ms=5000
+```
 
 ---
 

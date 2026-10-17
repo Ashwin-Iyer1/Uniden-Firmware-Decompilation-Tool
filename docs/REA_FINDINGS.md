@@ -119,8 +119,8 @@ config-offset map is in [DSP_PROTOCOL.md](DSP_PROTOCOL.md).
 
 UI `0xd31c`/`0xd330`/`0xd468` send eight opcode-`0x11` records; `0xd994` invokes the opcode-`0x10`
 builder. These functions were previously mislabeled as EEPROM operations. Their retries and
-timeouts belong to DSP synchronization. Actual persistent-settings storage remains a separate
-unresolved trace.
+timeouts belong to DSP synchronization. The separate persistent-settings trace was unresolved
+in this pass; it is now described in the [settings continuation](#r7-settings-continuation--2026-10-17).
 
 ### DSP mask selection and parsing
 
@@ -172,7 +172,7 @@ paged view. It was exported rather than re-analyzed or treated as truncated cano
   and unknown-byte classification. Large UI/DSP gaps include graphics, fonts, coefficient
   tables and padding; they are not automatically missing executable code. DSP `0x401c` is a
   plausible unreferenced routine requiring further provenance before adding a function seed.
-- **Unresolved:** actual NVM persistence, exact GPS fix-message semantics/signedness, short
+- **Unresolved at this pass:** actual NVM persistence (subsequently traced below), exact GPS fix-message semantics/signedness, short
   DSP-command argument meaning, remaining filter/coefficient behavior, and external USB-to-UART
   reachability. No runtime or RF-equivalence checks have been performed.
 - **Outside these exports:** LDROM bootloader bytes (not supplied) and the sibling STM32
@@ -218,3 +218,61 @@ checks reconstruct downloaded band, text, image, scan, GPS and code edits with t
 Python tools and compare complete firmware bytes. No firmware or derived assets
 are included in the website, Git repository or public CI. See
 [WEB_EDITOR.md](WEB_EDITOR.md) for supported operations and remaining limits.
+
+## R7 settings continuation — 2026-10-17
+
+The local `R7om.pdf` owner's manual (Issue 2, November 2023) guided a continuation
+through the retained UI C/assembly and decoded bytes. The complete new map, patch
+sites, exact stock bytes, manual-page references, and limitations are in
+[R7 settings](R7_SETTINGS.md). This work identifies additional modification targets
+without claiming real-device execution or RF performance.
+
+### Corrected default initialization and persistent storage
+
+- **Menu reset is `0x1cf48`, not `0x1d29c`.** Reset handler `0x14c64` calls
+  `0x1cf48`, serializes via `0x1e888`, and displays `Reset Completed`. The earlier
+  147-store initializer `0x1d29c` instead belongs to the invalid-marker path:
+  `0x1d680` → `0x1ce44` when settings word zero is not `0xffff0100`.
+- The paths differ: theme `config+0xb7` is 5 (Red) on menu reset, 6 (White) after
+  an invalid marker. Menu case 54 and the literal color labels establish the enum;
+  palette `0x9980` independently supplies RGB565 Red `0xf800` and White `0xffff`.
+  Normal startup subsequently loads valid saved settings, so changing defaults
+  does not force them over a user's stored preferences.
+- **Actual settings persistence is a separate I2C-style path.** Reads are
+  `0x1d658` → `0xeb58` → `0xeb94`; writes are `0x1d66c` → `0xed04`.
+  Framing `0xe87c` and ACK sampling `0x848` operate GPIO aliases
+  `0x40004800`/`0x40004804`, send seven-bit slave address `0x50`, and use an
+  eight-bit memory address. This supports serial EEPROM-style storage, without
+  identifying a physical memory part or its capacity. It is not the DSP UART path.
+
+### Auto-mute settings, timers, and output
+
+`config+0xc1` is Auto Mute signal level (0 Off, 1–8), and `config+0xca` is Auto
+Mute volume (0–7). Renderer labels, actual TBB entries in incrementers `0x11a30`
+and `0x11b24`, and the runtime consumer corroborate these meanings. Both reset
+paths default to level 8 and volume 2. Each has a dedicated immediate-store site,
+so independent guarded edits are possible without altering shared-register groups.
+
+Routine `0x16914` maintains `{u16 duration, u16 absence, u8 active}` at
+`0x20000188`. When the configured level is enabled and the signal does not exceed
+it, an alert engages auto-mute after 3000 elapsed units; absence clears it after
+10000. There are three coupled engagement-delay instruction sites and four
+runtime reset-gap sites. Consumer `0x196dc` uses the same active flag to select
+the mute volume only when it is below the master volume. This resolves why the
+older manual's configurable-volume description on p. 30 is more accurate than
+its fixed-level-1 sentence on p. 19.
+
+Clock setup `0x17a84`, Timer0 initialization `0x1b2a0`, and IRQ32 `0xc84` establish
+nominal millisecond units: a 22.1184 MHz HIRC source, compare 2212, and division by
+ten in the IRQ. The calculation is approximately 1.00007 ms per unit, consistent
+with the manual's 3-/10-second descriptions, not a measurement of hardware timing.
+The matched constants and addresses use Nuvoton's
+[NUC472/442 clock header](https://github.com/OpenNuvoton/NUC472_442BSP/blob/master/Library/StdDriver/inc/clk.h)
+and [register definitions](https://github.com/OpenNuvoton/NUC472_442BSP/blob/master/Library/Device/Nuvoton/NUC472_442/Include/NUC472_442.h).
+This is a NUC472/442-compatible register model, not exact SKU identification; the
+previous map's M480/EBI label for `0x40050000` was incorrect.
+
+Remaining work includes complete band/arbitration exceptions, different-signal
+resets, physical settings-memory identification, and hardware validation. These
+findings do not establish additional RF sensitivity, new radar bands, live
+mark/lockout editing, or the ability to flash edited images safely.

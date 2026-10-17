@@ -139,7 +139,7 @@ past the nominal 195072 B to capture the compressed `.data` tail (the tools do t
 | `0x14a0` | — | memset-to-zero copier `FUN_000014a0` (.bss block2) | Thumb-2 |
 | `0x1934`–`0xc460` | ~ | Main menu / label **string table** (~165 strings) | ASCII, NUL-term |
 | `0x1b1e8`–`0x1b243` | ~90 B | HardFault register-dump printf templates | ASCII |
-| `0x1d29c` | 147 writes | Factory-default initializer `FUN_0x1d29c` | Thumb-2 |
+| `0x1cf48`, `0x1d29c` | — | Menu-reset/startup defaults; separate invalid-NVM-marker defaults | Thumb-2 |
 | `0x1fbca`–`0x2116d` | ~`0x5a3`+ | 85 × 1-bpp label/badge/icon bitmaps | 1-bpp |
 | `0x2116d`, `0x21bbd` | 2640 B ea | 2 main-screen backgrounds (176×60 2-bpp) | 2-bpp |
 | `0x2260e`–`0x249ea` | — | RGB565 alert icons (laser/cam/GPS pin/arrow) | RGB565 |
@@ -207,7 +207,7 @@ address):
 
 The most-referenced global (219 base loads, 1333 field accesses). It lives in `.bss`
 (zero-init at boot, then populated at runtime), so **it has no default values stored in the firmware
-image** — it is loaded from external EEPROM/NVM and initialized by factory-init code. Size ≥ `0x608`
+image** — it is restored from external serial-memory settings and initialized by code. Size ≥ `0x608`
 bytes; **202 distinct field offsets** were enumerated. Field offsets below are relative to base
 `0x200008ec`.
 
@@ -217,7 +217,9 @@ bytes; **202 distinct field offsets** were enumerated. Field offsets below are r
 | `+0x10` | u8 | (init) | 7 | high |
 | `+0x1c` | 8×20 B array | Per-record `{u8=2, u16, u16, u8=1, u8=7, u8=0}` | see fmt | high |
 | `+0xb0`..`+0x11e` | bytes | Dense user-toggle bytes | — | high |
-| `+0xb7` | u8 | **Color theme** (range 0–7, 8 themes) | 6 | high |
+| `+0xb7` | u8 | **Color theme** (0 Blue, 1 Amber, 2 Green, 3 Pink, 4 Gray, 5 Red, 6 White, 7 Violet) | 5 menu reset; 6 invalid NVM | high |
+| `+0xc1` | u8 | **Auto Mute signal level** (0 Off; 1–8) | 8 | high |
+| `+0xca` | u8 | **Auto Mute volume** (0–7, capped by master volume) | 2 | high |
 | `+0xc9` | u8 | Display mode / state flag | 1 | high |
 | `+0xcb`, `+0xdb` | u8 | flags | 1 | med |
 | `+0xd1` | u8 | **Main-display mode** (0/1/2) | — | high |
@@ -229,10 +231,12 @@ bytes; **202 distinct field offsets** were enumerated. Field offsets below are r
 | `+0x5a0`/`+0x5ec` | — | Grouped fields (literals `0x20000e8c/0xee0`) | — | med |
 
 - **Field[0]** (base byte) = active settings-screen id, keyed by the menu dispatcher (§1.6).
-- Defaults are set at runtime by **factory-init `FUN_0x1d29c`** as immediate stores (`movs #imm;
-  strb/strh`), **not** from a `.data` table. 147 concrete defaults were extracted (theme `+0xb7`=6,
-  `+0x112/113/114`=8, `+0xdd/de/df`=7, the 8×20 array default `{2,_,_,1,7,0}`, most `+0x00..0x0c`
-  flags=1). To change power-on/factory-reset defaults, patch these immediates (code-patch).
+- Defaults are immediate stores (`movs #imm; strb/strh`), **not** a `.data` table.
+  **`0x1cf48` is the menu-reset/startup initializer; `0x1d29c` is the separate
+  invalid-NVM-marker initializer.** The earlier 147-store extraction covered the latter
+  and must not be treated as the menu-reset profile. Normal startup later restores saved
+  values; changing defaults does not override an existing device's preferences.
+  See [R7 settings](R7_SETTINGS.md) for paired instruction sites, enums, and call chains.
 - Renderer `FUN_0x58dc` reads `[base+0xb7]` (color theme, `cmp #8`) and `[base+0xd1]` (display mode),
   confirming the base and those two field roles.
 
@@ -271,7 +275,7 @@ Display` @`0x2354`, `Time Display` @`0x2338` correspond to the modes. The **scan
 (`FUN_0x9268` → `FUN_0x58dc`, callers `0x18042`/`0x1c07a`) is a **separate context**, not one of
 the `0xd1` modes.
 
-### 1.8 DSP settings synchronization; NVM attribution corrected
+### 1.8 DSP synchronization and persistent settings are separate paths
 
 `FUN_0xd31c` loops over eight **DSP configuration records**, calling `FUN_0xd330` →
 `FUN_0xd468`. The latter builds opcode `0x11` (wire `0x91`), not an EEPROM read.
@@ -280,10 +284,20 @@ struct. Both send through `FUN_0xd5d0` → UART5 TX `FUN_0x1b67c` at `0x40075000
 The status/retry logic and timeouts previously attributed here to NVM belong to DSP
 communication. Menu case 136 therefore does not, by these calls alone, establish an NVM save.
 
-Factory defaults still come from the immediate stores in `FUN_0x1d29c`. The actual persistent
-settings read/write path requires a separate trace; do not treat `0xd31c`/`0xd994` as its entry
-points. See [REA findings](REA_FINDINGS.md) and the complete UI→DSP field map in
-[DSP_PROTOCOL.md](DSP_PROTOCOL.md).
+The persistent path is now traced separately: reader `0x1d680` → `0x1d658` →
+`0xeb58`/`0xeb94`, and serializer `0x1e888` → `0x1d66c` → `0xed04`. It uses
+GPIO bit aliases `0x40004800`/`0x40004804` for I2C-style transactions to slave
+`0x50`, with a one-byte memory address. This is serial EEPROM-style access, not
+proof of a particular memory chip or its capacity. A missing marker `0xffff0100`
+at memory offset zero invokes `0x1ce44` → `0x1d29c`; menu reset instead invokes
+`0x14c64` → `0x1cf48`. See [R7 settings](R7_SETTINGS.md), [REA findings](REA_FINDINGS.md),
+and the separate UI→DSP field map in [DSP_PROTOCOL.md](DSP_PROTOCOL.md).
+
+Auto-mute processing in UI `0x16914` maintains duration/absence counters and an
+active flag at RAM `0x20000188`. Default engagement and reset thresholds are 3000
+and 10000 nominal-millisecond timer units. Consumer `0x196dc` applies the configured
+mute volume when the active flag is set and that volume is below the master volume.
+The exact guarded patch sites and clock derivation are in [R7 settings](R7_SETTINGS.md).
 
 ### 1.9 Font family @ `0x2ba8a`–`0x2d526`  ·  confidence: high
 
@@ -792,10 +806,15 @@ All three R7 code MCUs are **Nuvoton NuMicro Cortex-M4F**, load base flash `0x0`
 - **Fingerprint:** identical `SYS_UnlockReg` magic-knock in every reset handler — write
   `0x59, 0x16, 0x88` to `SYS_REGLCTL` @`0x40000100`, POR-disable key `0x5AA5` @`0x40000024`, then
   re-lock with `0`. FPU enabled via `CPACR` (`0xE000ED88`) `|= 0xF00000`.
-- **Peripheral map (matches Nuvoton M480):** SYS `0x40000000`, CLK `0x40000200`, GPIO `0x40004000`
-  (ports +`0x40`, bit-DOUT `0x40004800`), FMC `0x4000C000`, SDH0/1 `0x40040000/0x44000`, EBI
-  `0x40050000`, CRC/Crypto `0x40058000`, SPI0-3 `0x40060000`–`0x63000`, UART0-5 `0x40070000`–`0x75000`.
-  PPB: NVIC ISER `0xE000E100`, SysTick, SCB AIRCR `0xE000ED0C` (VECTKEY `0x05FA`).
+- **Peripheral model correction:** the UI clock-module constants and Timer0 setup
+  match Nuvoton's **NUC472/442-compatible** model. SYS is `0x40000000`, CLK
+  `0x40000200`, GPIO `0x40004000` (ports +`0x40`, pin aliases `0x40004800`),
+  Timer0 `0x40050000`, SPI0–3 `0x40060000`–`0x40063000`, and UART0–5
+  `0x40070000`–`0x40075000`. The previous M480 table incorrectly called the
+  Timer0 address EBI. Consult the
+  [official NUC472/442 register definitions](https://github.com/OpenNuvoton/NUC472_442BSP/blob/master/Library/Device/Nuvoton/NUC472_442/Include/NUC472_442.h)
+  and [clock deduction](R7_SETTINGS.md#why-timer-units-are-approximately-milliseconds).
+  This compatibility does not identify exact silicon, especially the separate GPS MCU.
 - **App images do NOT self-program flash** — `FMC_ISPTRG`/`ISPCMD` are absent from all three;
   in-field reflashing is done by the Nuvoton **LDROM bootloader** consuming the container. Flash is
   bootloader-gated.
@@ -805,8 +824,8 @@ All three R7 code MCUs are **Nuvoton NuMicro Cortex-M4F**, load base flash `0x0`
   part. SRAM usage: ui/dsp reference `.data`/`.bss` up to ~`0x2001b900` (≥128 KB SRAM part); gps only
   to ~`0x20003d38` (~16 KB).
 
-> Exact SKUs aren't pinned from the image (would need `SYS_PDID` @`0x40000000`, a runtime register).
-> Family is M480-class for Main+DSP and a smaller M4F for GPS.
+> Exact SKUs aren't pinned from the image; a measured product-ID register or physical
+> device identification would help. Register compatibility alone is insufficient.
 
 ---
 
@@ -841,12 +860,16 @@ See [REA_FINDINGS.md](REA_FINDINGS.md) for exact Evidence IDs, artifact identity
   message that carries the band settings (§1.13)**.
 - **Resolved in the REA pass:** Ka1–Ka9 config offsets and On/Off polarity; direct UI→DSP
   builder/UART; low-byte-first ASCII u16 fields; the standard builder's Ka-mask path.
-- **Medium / unknown:** remaining DSP field semantics, actual persistent-settings storage path,
+- **Resolved in the settings continuation:** separate menu-reset and invalid-marker defaults;
+  serial-memory settings read/write path; theme/mute enums; auto-mute timers and volume cap.
+  See [R7 settings](R7_SETTINGS.md).
+- **Medium / unknown:** remaining DSP field semantics, physical settings-memory chip/capacity,
   K-band coefficient structure beyond the documented record format, and ST* trailer model-byte
   interpretation (§0.2). Ghidra output still has inferred signatures and incomplete indirect-call coverage.
 - **The one hardware question:** whether the DSP UART reaches the external CP210x port. §2.7 shows
   the text console and the frame protocol share that single UART, so this now decides **both** at
   once. Not answerable from the image — it needs a probe on real hardware.
-- **Not present in this image:** any factory-default settings table (defaults are in EEPROM /
-  `FUN_0x1d29c` immediates). The R7 voice-DB format is described in §4; the sibling STSD format
+- **Not present in this image:** a simple factory-default settings table. Initializers
+  `0x1cf48` and `0x1d29c` contain immediate stores; existing preferences live in separate
+  serial memory. The R7 voice-DB format is described in §4; the sibling STSD format
   remains unresolved. The external LDROM bootloader is not included in these three application images.
