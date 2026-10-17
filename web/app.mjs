@@ -1,5 +1,7 @@
 import { openWorkspace, TEXT_FIELDS } from "./firmware.mjs";
 import { practiceBytes } from "./practice.mjs";
+import { SETTINGS, THEMES, validateSettingsSection, validateSettingsUi, settingsPatch } from "./settings.mjs";
+import { parsePatchFile, readStringField, patchStringField } from "./edits.mjs";
 import {
   readBands,
   bandPatch,
@@ -267,6 +269,7 @@ function renderPanel() {
   ({
     overview: renderOverview,
     bands: renderBands,
+    settings: renderSettings,
     text: renderText,
     graphics: renderGraphics,
     scan: renderScan,
@@ -301,7 +304,10 @@ async function loadFirmware(file, { practice = false } = {}) {
     soundRevision: null,
     practice,
     comparisonRevision: -1,
+    settingsDraft: null,
+    patchDraft: null,
   });
+  $("patch-text").value = "";
   $("firmware-file").value = "";
   $("reference-status").textContent = "";
   $("string-form").hidden = true;
@@ -475,6 +481,114 @@ function renderText() {
   renderStringRows();
   $("apply-text").disabled = true;
 }
+function renderSettings() {
+  const ws = state.ws, revision = ws.info.revision;
+  const request = state.settingsRequest = (state.settingsRequest || 0) + 1;
+  state.settingsDraft = null;
+  $("settings-content").hidden = true;
+  $("settings-status").textContent = "";
+  $("settings-unavailable").hidden = false;
+  $("settings-unavailable").textContent = "Checking the firmware for settings editing…";
+  $("apply-settings").disabled = true;
+  (async () => {
+    validateSettingsSection(ws.sections.find((s) => s.name === "ui_nu"));
+    const original = ws.getBytes("ui_nu");
+    const values = await validateSettingsUi(original);
+    if (ws !== state.ws || revision !== ws.info.revision || request !== state.settingsRequest) return;
+    const fields = $("settings-fields");
+    fields.replaceChildren();
+    const formValues = {};
+    for (const [name, setting] of Object.entries(SETTINGS)) {
+      const label = make("label", setting.label);
+      let input;
+      if (name === "auto_mute_delay_ms") {
+        input = make("input");
+        input.type = "number";
+        input.min = setting.minimum;
+        input.max = setting.maximum;
+        input.step = "1";
+        input.required = true;
+      } else {
+        input = make("select");
+        if (name === "default_theme" && values[name][0] !== values[name][1]) {
+          const keep = make("option", "Keep current defaults");
+          keep.value = "";
+          input.append(keep);
+        }
+        for (let i = setting.minimum; i <= setting.maximum; i++) {
+          const text = name === "default_theme" ? THEMES[i]
+            : name === "default_mute_level" && i === 0 ? "Off" : String(i);
+          const option = make("option", text);
+          option.value = String(i);
+          input.append(option);
+        }
+      }
+      input.id = `settings-input-${name}`;
+      input.value = name === "default_theme" && values[name][0] !== values[name][1] ? "" : String(values[name][0]);
+      formValues[name] = input.value;
+      input.addEventListener("input", updateSettingsDraft);
+      input.addEventListener("change", updateSettingsDraft);
+      const help = name === "auto_mute_delay_ms" ? "100–30,000 nominal milliseconds. Stock delay: 3,000."
+        : name === "default_mute_volume" ? "0–7. Auto mute never raises the current master volume."
+        : name === "default_mute_level" ? "Off, or signal level 1–8. Stronger signals remain unmuted."
+        : `Current: reset ${THEMES[values[name][0]]}; initial storage ${THEMES[values[name][1]]}. A selected color updates both.`;
+      label.append(input, make("span", help, "field-help"));
+      fields.append(label);
+    }
+    state.settingsDraft = { original, values, formValues };
+    $("settings-content").hidden = false;
+    $("settings-unavailable").hidden = true;
+    $("settings-status").textContent = "Firmware verified. Choose settings, then apply them to your copy.";
+  })().catch((cause) => {
+    if (ws !== state.ws || revision !== ws.info.revision || request !== state.settingsRequest) return;
+    $("settings-unavailable").textContent = `Settings controls are unavailable. ${cause.message}`;
+  });
+}
+function settingsChanges() {
+  if (!state.settingsDraft) throw new Error("Wait for settings verification before editing.");
+  return Object.fromEntries(Object.keys(SETTINGS)
+    .filter((name) => $(`settings-input-${name}`).value !== state.settingsDraft.formValues[name])
+    .map((name) => {
+      const text = $(`settings-input-${name}`).value;
+      if (!/^\d+$/.test(text)) throw new Error("Settings must use whole numbers within the displayed range.");
+      return [name, Number(text)];
+    }));
+}
+function updateSettingsDraft() {
+  if (!state.settingsDraft) return;
+  const dirty = Object.keys(SETTINGS).some((name) =>
+    $(`settings-input-${name}`).value !== state.settingsDraft.formValues[name]);
+  setDraft("settings", dirty);
+  $("apply-settings").disabled = !dirty;
+  $("settings-status").textContent = dirty ? "Unapplied settings. Apply to include them in your download." : "Firmware verified. No settings changes pending.";
+}
+async function applySettings() {
+  const ws = state.ws, revision = ws.info.revision;
+  const draft = state.settingsDraft, changes = settingsChanges();
+  const signature = JSON.stringify(changes);
+  validateSettingsSection(ws.sections.find((s) => s.name === "ui_nu"));
+  ensureUnchanged("ui_nu", 0, draft.original, "Settings firmware");
+  const result = await settingsPatch(ws.getBytes("ui_nu"), changes);
+  if (ws !== state.ws || revision !== ws.info.revision || draft !== state.settingsDraft
+      || signature !== JSON.stringify(settingsChanges()))
+    throw new Error("Settings changed during verification. Review the current draft and apply again.");
+  const label = `Settings: ${Object.keys(changes).map((name) => SETTINGS[name].label).join(", ")}`;
+  transaction(label, () => ws.applyPatches(result.patches, label), "settings");
+}
+function selectString(item, latin1 = false) {
+  if (state.selectedString && !$("string-form").hidden && $("string-value").value !== state.selectedString.text)
+    throw new Error("Apply or discard the selected string draft before choosing another string.");
+  state.selectedString = {
+    ...item, latin1, section: $("text-section").value,
+    original: state.ws.getBytes($("text-section").value).slice(item.offset, item.offset + item.size),
+  };
+  $("string-location").textContent = `${state.selectedString.section} ${hex(item.offset)} · ${item.maxLength} character capacity${latin1 ? " · Latin-1" : ""}`;
+  $("string-value").value = item.text;
+  $("string-value").maxLength = item.maxLength;
+  $("string-form").hidden = false;
+  updateTextDraft();
+  $("string-value").focus();
+}
 function filteredStrings() {
   const query = $("text-search").value.trim().toLowerCase();
   return state.strings.filter((item) =>
@@ -500,32 +614,7 @@ function renderStringRows() {
     const td = make("td"),
       button = make("button", "Edit", "text-button");
     button.type = "button";
-    button.addEventListener("click", () => {
-      if (
-        state.selectedString &&
-        !$("string-form").hidden &&
-        $("string-value").value !== state.selectedString.text
-      ) {
-        error(
-          "Apply or discard the selected string draft before choosing another string.",
-        );
-        return;
-      }
-      state.selectedString = {
-        ...item,
-        section: $("text-section").value,
-        original: state.ws
-          .getBytes($("text-section").value)
-          .slice(item.offset, item.offset + item.size),
-      };
-      $("string-location").textContent =
-        `${state.selectedString.section} ${hex(item.offset)} · ${item.maxLength} character capacity`;
-      $("string-value").value = item.text;
-      $("string-value").maxLength = item.maxLength;
-      $("string-form").hidden = false;
-      updateTextDraft();
-      $("string-value").focus();
-    });
+    button.addEventListener("click", guard(() => selectString(item)));
     td.append(button);
     tr.append(td);
     body.append(tr);
@@ -582,7 +671,7 @@ function applyQuickText() {
     patches.push({
       section: item.section,
       offset: item.offset,
-      bytes: patchString(
+      bytes: item.latin1 ? patchStringField(state.ws.getBytes(item.section), item.offset, $("string-value").value) : patchString(
         state.ws.getBytes(item.section),
         item.offset,
         item.size,
@@ -1085,6 +1174,43 @@ function renderRaw() {
   renderSoundDirectory();
   $("raw-prev").disabled = state.rawOffset === 0;
   $("raw-next").disabled = state.rawOffset + 256 >= bytes.length;
+  if (!state.drafts.has("raw")) {
+    state.patchDraft = null;
+    $("patch-text").value = "";
+    $("patch-status").textContent = "Choose a patch file or paste its lines to start a draft.";
+    $("apply-patch-file").disabled = true;
+  }
+}
+function requireNoPatchDraft() {
+  if (!state.patchDraft) return;
+  $("raw-section").value = state.patchDraft.selection.section;
+  $("raw-decoded").checked = state.patchDraft.selection.decoded;
+  throw new Error("Apply or discard the patch-file draft before changing its region or making another raw edit.");
+}
+function updatePatchDraft() {
+  const dirty = $("patch-text").value.trim().length > 0;
+  if (dirty && !state.patchDraft) {
+    const selection = rawSelection();
+    state.patchDraft = { selection, original: state.ws.getBytes(selection.section, selection.decoded) };
+  }
+  if (!dirty) state.patchDraft = null;
+  setDraft("raw", dirty);
+  $("apply-patch-file").disabled = !dirty;
+  $("patch-status").textContent = dirty
+    ? `Unapplied patch file for ${state.patchDraft.selection.section}. Offsets follow the selected region and decoding.`
+    : "Choose a patch file or paste its lines to start a draft.";
+}
+function applyPatchFile() {
+  const draft = state.patchDraft;
+  if (!draft) throw new Error("Choose a patch file or paste patch lines first.");
+  const { section, decoded } = draft.selection;
+  const current = state.ws.getBytes(section, decoded);
+  if (!equal(current, draft.original))
+    throw new Error("This patch-file region changed after the draft was opened. Discard the draft and reopen it before applying.");
+  const patches = parsePatchFile($("patch-text").value, { section, decoded, size: current.length });
+  if (!patches.length) throw new Error("The patch file has no byte edits.");
+  const label = `Patch file (${patches.length} patches in ${section})`;
+  transaction(label, () => state.ws.applyPatches(patches, label), "raw");
 }
 function renderSoundDirectory() {
   const section = state.ws.sections.find((s) => s.name === "sound_dbnu");
@@ -1138,6 +1264,7 @@ function typedBytes() {
   return bytes;
 }
 function applyRaw() {
+  requireNoPatchDraft();
   const selection = rawSelection(),
     offset = numberOffset($("raw-patch-offset").value),
     bytes = typedBytes();
@@ -1370,11 +1497,15 @@ $("reference-file").addEventListener(
       request !== state.referenceRequest
     )
       return;
+    if (state.drafts.size)
+      throw new Error("A draft was started while the reference was loading. Apply or discard it before loading a reference.");
     state.ws = next;
     state.bitmap = null;
     state.gps = null;
     state.rendered = {};
     state.soundRevision = null;
+    state.settingsDraft = null;
+    state.patchDraft = null;
     $("reference-status").textContent =
       `Reference loaded: ${file.name}. Named editors use its layout; changed firmware bytes are not verified against stock.`;
     refresh();
@@ -1427,6 +1558,8 @@ $("reset-all").addEventListener(
     state.drafts.clear();
     state.rendered = {};
     state.soundRevision = null;
+    state.settingsDraft = null;
+    state.patchDraft = null;
     invalidateDownloads();
     refresh();
     status("Reset to the file opened at the start of this session.");
@@ -1434,6 +1567,11 @@ $("reset-all").addEventListener(
 );
 $("band-search").addEventListener("input", filterBands);
 $("apply-bands").addEventListener("click", guard(applyBands));
+$("settings-form").addEventListener("submit", guard(applySettings));
+$("text-read").addEventListener("click", guard(() => {
+  known();
+  selectString(readStringField(state.ws.getBytes($("text-section").value), numberOffset($("text-offset").value)), true);
+}));
 $("apply-text").addEventListener("click", guard(applyQuickText));
 $("text-section").addEventListener(
   "change",
@@ -1603,13 +1741,14 @@ $("gps-csv-file").addEventListener(
 $("raw-section").addEventListener(
   "change",
   guard(() => {
+    requireNoPatchDraft();
     state.rawOffset = 0;
     $("raw-patch-offset").value = "0x0";
     $("raw-search-result").textContent = "";
     renderRaw();
   }),
 );
-$("raw-decoded").addEventListener("change", guard(renderRaw));
+$("raw-decoded").addEventListener("change", guard(() => { requireNoPatchDraft(); renderRaw(); }));
 $("raw-go").addEventListener(
   "click",
   guard(() => {
@@ -1631,9 +1770,27 @@ $("raw-next").addEventListener("click", () => {
 });
 $("raw-find").addEventListener("click", guard(findRaw));
 $("raw-form").addEventListener("submit", guard(applyRaw));
+$("patch-text").addEventListener("input", updatePatchDraft);
+$("patch-file-form").addEventListener("submit", guard(applyPatchFile));
+$("choose-patch-file").addEventListener("click", () => $("patch-file").click());
+$("patch-file").addEventListener("change", guard(async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > MAX_SIZE) throw new Error("Patch files must be at most 32 MB.");
+  const ws = state.ws, revision = ws.info.revision, selection = rawSelection();
+  const previousText = $("patch-text").value;
+  const request = state.patchRequest = (state.patchRequest || 0) + 1;
+  const text = await file.text();
+  if (ws !== state.ws || revision !== ws.info.revision || previousText !== $("patch-text").value
+      || request !== state.patchRequest || JSON.stringify(selection) !== JSON.stringify(rawSelection())) return;
+  $("patch-text").value = text;
+  updatePatchDraft();
+  event.target.value = "";
+}));
 $("raw-location").addEventListener(
   "change",
   guard(() => {
+    requireNoPatchDraft();
     known();
     const value = $("raw-location").value;
     if (!value) return;
@@ -1662,6 +1819,7 @@ $("raw-location").addEventListener(
 $("sound-jump").addEventListener(
   "click",
   guard(() => {
+    requireNoPatchDraft();
     const clip = state.soundClips.find(
       (c) => String(c.index) === $("sound-clip").value,
     );
@@ -1699,10 +1857,11 @@ $("raw-export").addEventListener(
     );
   }),
 );
-$("raw-import").addEventListener("click", () => $("raw-file").click());
+$("raw-import").addEventListener("click", guard(() => { requireNoPatchDraft(); $("raw-file").click(); }));
 $("raw-file").addEventListener(
   "change",
   guard(async (event) => {
+    requireNoPatchDraft();
     const file = event.target.files[0];
     if (!file) return;
     if (file.size > MAX_SIZE)
@@ -1711,7 +1870,7 @@ $("raw-file").addEventListener(
       revision = ws.info.revision,
       selection = rawSelection(),
       bytes = new Uint8Array(await file.arrayBuffer());
-    if (ws !== state.ws || revision !== ws.info.revision) return;
+    if (ws !== state.ws || revision !== ws.info.revision || state.patchDraft) return;
     transaction(
       `Replace ${selection.section}`,
       () =>
@@ -1729,6 +1888,7 @@ $("raw-file").addEventListener(
 $("splice-form").addEventListener(
   "submit",
   guard(() => {
+    requireNoPatchDraft();
     const offset = numberOffset($("splice-offset").value),
       count = Number($("splice-delete").value),
       bytes = bytesFromHex($("splice-bytes").value);
@@ -1748,6 +1908,7 @@ $("discard-draft").addEventListener(
     state.drafts.delete(state.panel);
     if (state.panel === "graphics") state.bitmap = null;
     if (state.panel === "gps") state.gps = null;
+    if (state.panel === "raw") state.patchDraft = null;
     delete state.rendered[state.panel];
     renderPanel();
     renderDraft();

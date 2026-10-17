@@ -123,7 +123,7 @@ export function scanStrings(
   }
   return result;
 }
-function formatSignature(text) {
+export function formatSignature(text) {
   const tokens = [],
     spec =
       /^%(?:\d+\$)?[-+#0 ']*(?:\d+|\*(?:\d+\$)?)?(?:\.(?:\d*|\*(?:\d+\$)?))?(?:hh|ll|[hljztL])?[diuoxXfFeEgGaAcspn]/;

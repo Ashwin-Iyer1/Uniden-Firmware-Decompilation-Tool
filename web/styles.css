@@ -1430,6 +1430,14 @@ body.has-file .overview-grid .device-figure {
 .edit-form > .button {
   justify-self: start;
 }
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 22px;
+}
+.settings-fields label { display: grid; gap: 9px; align-content: start; }
+.settings-fields input, .settings-fields select { width: 100%; }
+.settings-fields .field-help { margin: 0; font-weight: 400; }
 .form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

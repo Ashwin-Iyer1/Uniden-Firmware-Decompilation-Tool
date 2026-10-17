@@ -11,9 +11,10 @@ The local [R7 owner's manual](../R7om.pdf), Issue 2, November 2023, supplies use
 behavior and terminology. Page numbers below are both printed and PDF page numbers.
 The manual predates this firmware, so it cannot establish newer setting semantics.
 
-## Guarded command-line editor
+## Guarded Python and browser editors
 
-`tools/r7_settings.py` exposes four settings:
+`tools/r7_settings.py` and the browser's **Settings & timing** panel expose the
+same four settings:
 
 | Name | Accepted values | Effect |
 |---|---|---|
@@ -25,6 +26,24 @@ The manual predates this firmware, so it cannot establish newer setting semantic
 The 100–30000 nominal-millisecond delay bounds are **editor policy**, not a vendor
 menu range. The stock reset gap remains 10000; the tool does not expose its research
 sites as an editable setting.
+
+In the [browser workbench](https://ashwin-iyer1.github.io/Uniden-Firmware-Decompilation-Tool/),
+open your firmware, select **Settings & timing**, change the desired values, and
+choose **Apply settings**. Review the operation and download a separate modified
+copy. The theme control preserves the stock Red/White split when left unchanged;
+selecting a theme sets both initialization paths together. Browser input/output
+stays local, and the downloaded instruction changes match the Python editor.
+
+**Apply settings before changing UI text, graphics, or scan motion.** The browser
+uses the same complete-UI hash gate as Python: only complete supported settings
+patches are accepted alongside the original UI bytes. Other editors can then add
+resource edits. Settings-patched files reopen with the R7 profile recognized after
+opcode, register, range, and coupled-value checks. This recognition is separate
+from permission to make another settings edit: independently changed UI resources
+still fail the settings hash check, even if a verified reference enables other
+named controls. Reference mode cannot bypass this gate.
+
+### Python commands
 
 ```sh
 python3 tools/r7_settings.py inspect R7_v153.150.127_db260702.bin
@@ -66,6 +85,23 @@ python3 tools/r7_validate_settings.py decoded/r7-custom-settings.bin \
   --report decoded/settings-validation.json
 R7_FIRMWARE=R7_v153.150.127_db260702.bin python3 -m unittest discover -s tests -v
 ```
+
+The browser port has unit and private-fixture parity tests. With `web/` served
+locally and Playwright installed outside the repository, run:
+
+```sh
+R7_FIXTURE=/absolute/path/to/your/stock/firmware.bin node --test tests/*.test.mjs
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+R7_FIXTURE=/absolute/path/to/your/stock/firmware.bin \
+WEB_URL=http://127.0.0.1:4173 \
+node tests/web_parity_browser.mjs
+```
+
+These tests compare complete downloaded firmware against Python output and check
+that unsupported images, partial coupled patches, and stale drafts cannot apply
+settings. Files stay in the local browser; no private firmware is uploaded. See the
+[web editor guide](WEB_EDITOR.md#privacy-and-development) for setup and the other
+resource regression suite.
 
 The harness executes actual Thumb instructions for both initializers and compares
 all unrelated SRAM writes and final bytes against the reference, with external calls
