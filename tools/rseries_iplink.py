@@ -65,10 +65,13 @@ def unpack7(bytes_le):
 # =====================================================================
 # config struct base = SRAM 0x200008ec.  Each tuple:
 #   (name, cfg_offset, frame_byte_index, bit, width, inverted)
-# inverted => wire bit set when the config byte == 0 (i.e. band/seg OFF stored
-# as 1 means "swept", but ui inverts several of them onto the wire).
+# inverted => wire bit set when the config byte == 0. For Ka segments the
+# menu displays zero as On, nonzero as Off; therefore wire 1 means Ka On.
 # Verified against ui_nu FUN_0xf1a0 (0xf1a0..0xf388) and the gps_nu unpacker
-# at 0x4492 which scatters these bits into the enable array @0x20000036.
+# at 0x4492 which scatters these bits into the array @0x20000036. Ka label and
+# polarity evidence: dispatcher 0x1447a..0x14586 -> renderer 0xb340,
+# strings "Ka 1 :".."Ka 9 :" at 0xb4e4..0xb524 and " On"/"Off" at 0xb52c/0xb530.
+# This is the SUB link; these byte positions do not identify DSP mask bits.
 CONFIG_MAP = [
     #  name             off    byte bit  w  inv
     ("f_0x118",        0x118,  2,  3,   3, False),  # 3-bit value (bits3-5)
@@ -120,11 +123,15 @@ def build_config(config_bytes, subcmd=0xAB):
     return bytes(frame)
 
 def config_from_ka(enabled_segments, subcmd=0xAB):
-    """Build a config frame with only the given Ka segments (1..9) swept."""
+    """Build a SUB frame with the given Ka menu segments (1..9) On.
+
+    Other config fields use build_config's zero-byte defaults. The historical
+    "swept" terminology describes the requested menu state, not observed RF.
+    """
     cfg = {}
     for seg in range(1, 10):
-        # config byte == 1 means "swept/enabled" in the ui struct
-        cfg[_seg_off(seg)] = 1 if seg in enabled_segments else 0
+        # Dispatcher passes On to the renderer iff this config byte is zero.
+        cfg[_seg_off(seg)] = 0 if seg in enabled_segments else 1
     return build_config(cfg, subcmd)
 
 def _seg_off(seg):
@@ -135,7 +142,12 @@ def _seg_off(seg):
     raise KeyError(seg)
 
 def decode_config(frame):
-    """Decode an 8-byte ui->gps config frame. Returns dict."""
+    """Decode an 8-byte ui->gps config frame. Returns dict.
+
+    fields[*].cfg is a canonical 0/1 reconstruction for one-bit fields; the
+    original config byte may have been another nonzero value. The legacy key
+    ka_segments_swept lists Ka menu settings that are On, not measured sweeps.
+    """
     frame = bytes(frame)
     if len(frame) != 8:
         raise SystemExit("config frame must be 8 bytes")
@@ -146,9 +158,8 @@ def decode_config(frame):
     for name, off, bi, bit, w, inv in CONFIG_MAP:
         raw = (frame[bi] >> bit) & ((1 << w) - 1)
         if w == 1:
-            enabled = (raw == 0) if inv else (raw == 1)
             out["fields"][name] = {"wire": raw, "cfg": (0 if raw else 1) if inv else raw}
-            if name.startswith("ka_seg") and enabled:
+            if name.startswith("ka_seg") and out["fields"][name]["cfg"] == 0:
                 seg = int(name[6:])
                 out["ka_segments_swept"].append(seg)
         else:
@@ -232,10 +243,10 @@ def selftest():
                6: (5, 3), 7: (5, 2), 8: (5, 1), 9: (5, 0)}
     for seg, (bi, bit) in seg_loc.items():
         fr = config_from_ka({seg})               # only this segment swept
-        # inverted: swept(cfg==1) => wire bit 0 ; every OTHER seg wire bit 1
-        ck(f"seg{seg} wire0 when swept", ((fr[bi] >> bit) & 1) == 0)
-        others = config_from_ka(set())            # none swept => all seg wire bits 1
-        ck(f"seg{seg} wire1 when off", ((others[bi] >> bit) & 1) == 1)
+        # Menu On(cfg==0) => wire bit 1; every other segment wire bit is zero.
+        ck(f"seg{seg} wire1 when on", ((fr[bi] >> bit) & 1) == 1)
+        others = config_from_ka(set())            # all Off => all Ka wire bits zero
+        ck(f"seg{seg} wire0 when off", ((others[bi] >> bit) & 1) == 0)
 
     # gps->ui coordinate frame round-trips a real latitude (47.1234567 deg)
     lat_e7 = 471234567

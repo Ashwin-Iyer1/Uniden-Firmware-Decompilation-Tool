@@ -19,7 +19,8 @@ This project derives from and is a combined/derivative work of:
 
 The firmware container layout and the "old" Sound / GPS-database transform
 (the 2-bit-plane transpose + subtract key) originate from that project and are
-reimplemented here in Python. AGPL-3.0 is retained for compliance.
+reimplemented here in Python and in the browser's JavaScript engine. AGPL-3.0
+is retained for compliance.
 
 Work original to this project: recovery of the code-section subtract keys and
 ARM Cortex-M decoding; the display blitter/bitmap formats and boot-logo

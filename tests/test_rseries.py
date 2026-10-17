@@ -6,6 +6,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
@@ -153,6 +154,38 @@ class ContainerTests(unittest.TestCase):
             extract_image(container(), tmp)
             with self.assertRaisesRegex(FirmwareFormatError, 'must be empty'):
                 extract_image(container(), tmp)
+
+    def test_extract_refuses_symlink_created_after_directory_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / 'extraction'
+            out.mkdir()
+            target = root / 'private.bin'
+            target.write_bytes(b'preserve these bytes')
+
+            def race(buf):
+                # Simulate another process creating an output alias after the
+                # empty-directory check but before the first extraction write.
+                (out / '00-framing.raw.bin').symlink_to(target)
+                return inspect_image(buf)
+
+            with patch('rseries.inspect_image', side_effect=race):
+                with self.assertRaises(FileExistsError):
+                    extract_image(container(), out)
+            self.assertEqual(target.read_bytes(), b'preserve these bytes')
+
+    def test_repack_rejects_symlink_to_matching_external_piece(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / 'extraction'
+            manifest = extract_image(container(), out)
+            piece = out / manifest['pieces'][0]['file']
+            external = root / 'outside.bin'
+            external.write_bytes(piece.read_bytes())
+            piece.unlink()
+            piece.symlink_to(external)
+            with self.assertRaisesRegex(FirmwareFormatError, 'inside the extraction directory'):
+                repack_image(out)
 
 
 class EspTests(unittest.TestCase):

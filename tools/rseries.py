@@ -93,10 +93,16 @@ def extract_image(buf, out_dir):
     pieces = []
     pos = 0
 
+    def write_new(filename, payload):
+        # The empty-directory check is not atomic with later writes. Refuse
+        # existing files and symlinks even if they appear after that check.
+        with (out_dir / filename).open('xb') as handle:
+            handle.write(payload)
+
     def save(start, end, name):
         payload = buf[start:end]
         filename = f'{len(pieces):02d}-{name}.raw.bin'
-        (out_dir / filename).write_bytes(payload)
+        write_new(filename, payload)
         pieces.append(dict(file=filename, offset=start, length=len(payload), sha256=sha256(payload)))
 
     for f in manifest['sections']:
@@ -112,18 +118,18 @@ def extract_image(buf, out_dir):
             if encode_old_model(f['key'], decoded) != payload:
                 raise FirmwareFormatError(f'{f["name"]} decode round-trip failed')
             f['decoded_file'] = f'{name}.dec.bin'
-            (out_dir / f['decoded_file']).write_bytes(decoded)
+            write_new(f['decoded_file'], decoded)
         if 'esp' in f:
             for segment in f['esp']['segments']:
                 filename = f'{name}-segment-{segment["index"]:02d}-0x{segment["load_address"]:08x}.bin'
                 start = segment['offset']
-                (out_dir / filename).write_bytes(payload[start:start + segment['length']])
+                write_new(filename, payload[start:start + segment['length']])
                 segment['file'] = filename
         pos = off + length
     if pos < len(buf):
         save(pos, len(buf), 'framing')
     manifest['pieces'] = pieces
-    (out_dir / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    write_new('manifest.json', (json.dumps(manifest, indent=2) + '\n').encode('utf-8'))
     return manifest
 
 

@@ -36,7 +36,7 @@ A complete, region-by-region map of the Uniden R7 combined firmware image, rever
 | 4 | sound_dbnu (DRSWSDB) | `0x055a33` | ~2 MB | **225** | voice / alert audio — Nuvoton ISD3800 flash image, 4-bit ADPCM (§4) |
 | 5 | **GPSD:LRDB** | `0x255a46` | ~204 KB | 210 | camera / POI database |
 | 6 | STUI / STDS / STGP / STSD | `0x288a65`+ | — | 182/184/183/255 | parallel STM32 image set (not run by the R7) |
-| — | NMGF footer | `0x4e26a4` | 12 B | plain | merge marker; file ends at NMGF+12 |
+| — | NMGF footer | `0x4e26ab` | 12 B | plain | merge marker; file ends at NMGF+12 |
 
 The payload transform (2-bit-plane transpose per 4-byte group + subtract per-section key) and the
 key table are documented in [FORMAT.md](FORMAT.md) §1. All sections round-trip byte-exact
@@ -71,7 +71,9 @@ Each code/image section ends in a **9-byte trailer**: `u16 (model<<10 | version)
 | STDS | `0x2d7a7a` | `0x1c96` | 7 / 150 | `DRSWSTD` |
 | STGP | `0x2e268f` | `0x1c7f` | 7 / 127 | `DRSWSTG` |
 
-Sound-type sections (`sound_dbnu`, `STSD`, both key 255) get **only** a 7-byte terminator, no u16.
+Sound-type sections (`sound_dbnu`, `STSD`) have a 12-byte footer followed by a
+7-byte terminator, without a u16 version. The R7 `sound_dbnu` decode key is **225**;
+the legacy key 255 is not valid for that ISD3800 payload (see [SOUND.md](SOUND.md)).
 
 > **Disagreement worth noting.** The container-framing analysis reads the ST* trailers as
 > **model 7 (R7)** with the *same* version triplet as ui/dsp/gps, suggesting "ST" is a parallel R7
@@ -90,7 +92,7 @@ conventions:
 |---|---|---|---|
 | GPSD/GASD | `GPSD:LRDB` | `clen-12`, no 512 rounding | 12-byte footer + 7-byte term |
 | STUI/STDS/STGP | ST* code | `alter_length(clen)` | 9-byte trailer |
-| STSD/SUSD | ST* sound | `clen-12` | 7-byte term (key 255) |
+| STSD | ST* sound, verified stock layout | `clen-12` | 12-byte footer + 7-byte term |
 
 Confirmed `clen`: GPSD `0x3300c`, STUI `0x30fe8`, STDS `0x1dfa4`, STGP `0xab24`, STSD `0x200000`.
 
@@ -100,20 +102,22 @@ Final 12 bytes at file `0x4e26ab`: `['NMGF'][u32 0][u32 0x64=100]`. Middle `0` (
 records) marks it as a terminator; trailing `100` = merge-container format/version, **not** a
 checksum. File ends exactly at NMGF+12.
 
-> Parser note: `rseries_unpack.py parse()` never emits the NMGF row — its `while pos < len-12` loop exits
-> exactly at the footer offset. It also hardcodes version 0 for ST* sections, missing their
-> `model7/ver153·150·127` trailers.
+> Parser note: `rseries_unpack.py` (also exposed as `r7_unpack.py`) now validates
+> the STSD footer and reports NMGF and component versions. The browser parser
+> checks its supported framing independently. These checks do not establish
+> firmware authenticity or hardware acceptance.
 
-### 0.5 Integrity — DEFINITIVELY ABSENT  ·  confidence: high
+### 0.5 No in-file integrity field identified
 
 CRC32 / Adler32 / sum32 (LE+BE) / sum-of-bytes / xor32 were computed over **every section** (encoded
 *and* decoded, full and minus-trailer) and over whole-image ranges (up to NMGF, minus last 4/8/12) —
 **none** of the resulting 32-bit values appears anywhere in the 5.12 MB file, in either byte order.
 The only "matches" are 16-bit CRC values landing in random data (birthday coincidence), never in a
-structural slot. **There is no in-file integrity/CRC/signature over any section or the whole image.**
-Any edit that preserves framing (correct length words, tag records, trailers, 512-rounding) parses
-cleanly with nothing to recompute. Integrity is enforced only by the update transport; Recovery Mode
-makes a bad flash recoverable (see [FLASHING.md](FLASHING.md)).
+structural slot. These searches found no integrity field that the editing tools must recompute.
+They do not prove the absence of every checksum, signature scheme or device-side validation.
+Preserving framing makes the edited file parseable, but does not establish that an updater or
+detector will accept it. Modified browser exports have not been tested on hardware; see
+[FLASHING.md](FLASHING.md) for the separate update and recovery workflow.
 
 ---
 
@@ -256,7 +260,7 @@ reads/writes one config byte at a fixed offset and calls a per-screen render hel
 | c69 | `[0xd2/d3]` | `~0x19xx` | — |
 | c72–80 | `[0xeb–0xf2]` | `0xc0a4` | — |
 | c102–133 | — (no cfg byte) | `0xb6d8` | 32 list-item screens (scrollable list) |
-| c136 | — | `0xd994/0xd330` | **save to NVM** |
+| c136 | — | `0xd994/0xd330` | **send settings to DSP** (see §1.8) |
 
 ### 1.7 Display-mode dispatch `config[0xd1]`  ·  confidence: high
 
@@ -267,12 +271,19 @@ Display` @`0x2354`, `Time Display` @`0x2338` correspond to the modes. The **scan
 (`FUN_0x9268` → `FUN_0x58dc`, callers `0x18042`/`0x1c07a`) is a **separate context**, not one of
 the `0xd1` modes.
 
-### 1.8 Settings NVM load/save  ·  confidence: medium
+### 1.8 DSP settings synchronization; NVM attribution corrected
 
-`config` is loaded from external EEPROM in **8 blocks** by `FUN_0xd31c` → `FUN_0xd330`
-(validate/retry `FUN_0xd468`/`FUN_0xd61c`, `status==4` → error `FUN_0xe4bc`, timeouts `0xbb8`/`0x1388`).
-Menu case 136 triggers save (`FUN_0xd994`). **No factory-default table exists in the ui_nu image** —
-defaults come from EEPROM/`FUN_0x1d29c`.
+`FUN_0xd31c` loops over eight **DSP configuration records**, calling `FUN_0xd330` →
+`FUN_0xd468`. The latter builds opcode `0x11` (wire `0x91`), not an EEPROM read.
+`FUN_0xd994` calls `FUN_0xd61c`, which builds opcode `0x10` (wire `0x90`) from the UI config
+struct. Both send through `FUN_0xd5d0` → UART5 TX `FUN_0x1b67c` at `0x40075000`.
+The status/retry logic and timeouts previously attributed here to NVM belong to DSP
+communication. Menu case 136 therefore does not, by these calls alone, establish an NVM save.
+
+Factory defaults still come from the immediate stores in `FUN_0x1d29c`. The actual persistent
+settings read/write path requires a separate trace; do not treat `0xd31c`/`0xd994` as its entry
+points. See [REA findings](REA_FINDINGS.md) and the complete UI→DSP field map in
+[DSP_PROTOCOL.md](DSP_PROTOCOL.md).
 
 ### 1.9 Font family @ `0x2ba8a`–`0x2d526`  ·  confidence: high
 
@@ -362,38 +373,53 @@ so this is the **ui_nu ↔ gps_nu** link, distinct from the DSP's ASCII-hex prot
 |---|---|
 | `0` | `0xd2` (= `0x52 \| 0x80`) |
 | `1` | subcmd — `0xab` from `0x1024e` (send + await reply `0xda`, via `0x100e0`), `0xac` from `0x1027e` (fire-and-forget, via `0x1b890`) |
-| `2`–`3` | u16 band bitfield (big-endian) |
-| `4`–`5` | u16 Ka-segment bitmap + extra flags |
-| `6` | flags: bit2 `config[0x06]`, bit1 `config[0xb5]`, bit0 `config[0xe1]` |
+| `2` | bits 5–3: `config[0x118] & 7`; bit2: `[0x01] == 1`; bit1: `[0x03] == 1`; bit0: `[0x04] == 1` |
+| `3` | bit6: `[0x07] == 1`; bit5: `[0x08] == 1`; bit4: `[0xcf] == 1`; bits3–2: constant `11`; bit1: `[0xf6] == 0`; bit0: `[0xf5] == 1` |
+| `4` | bit6: `[0x115] == 0`; bit5: `[0xb6] == 1`; bit4: `[0xce] == 1`; bit0: `[0xe0] == 0` (Ka 1 On) |
+| `5` | bits6–0: `[0xe2..0xe8] == 0`, respectively (Ka 3–9 On) |
+| `6` | bit2: `[0x06] == 0`; bit1: `[0xb5] == 0`; bit0: `[0xe1] == 0` (Ka 2 On) |
 | `7` | XOR checksum of bytes 0-6 (`FUN_0x1117c(buf,7)`) — equivalent to §2.7's scheme, with the `opcode\|0x80` seed folded in as byte 0 |
 
-**Where the Ka-segment bits come from** — `config[0xe0..0xe8]` (the 9-byte band group of §1.6, menu
-cases c40–48), with **inverted sense**: the wire bit is set when the config byte is **zero**.
+Unlisted bits are zero. Each payload byte is below `0x80`; the byte/bit positions above describe
+this SUB frame directly, without treating adjacent bytes as a DSP mask. The builder at
+`0xf1ae`–`0xf1b4` packs `(config[0x118] << 3) & 0x38`; the field's semantic name remains unconfirmed.
 
-| Config | Wire bit (of the byte 4-5 u16) |
-|---|---|
-| `[0xe0]` | bit 8 |
-| `[0xe2]` | bit 6 |
-| `[0xe3]` | bit 5 |
-| `[0xe4]` | bit 4 |
-| `[0xe5]` | bit 3 |
-| `[0xe6]` | bit 2 |
-| `[0xe7]` | bit 1 |
-| `[0xe8]` | bit 0 |
+**Ka labels and polarity are confirmed:** `config[0xe0..0xe8]` map in order to **Ka 1–9**.
+Menu cases c40–48 at `0x1447a + 0x1e*(segment-1)` pass `(segment, 1)` to `FUN_0xb340` when the
+config byte is **zero**, and `(segment, 0)` otherwise. The renderer's jump table selects
+`"Ka 1 :"` through `"Ka 9 :"` at `0xb4e4`–`0xb524`; its branch at `0xb3de` selects `" On"`
+at `0xb52c` for the second argument `1`, and `"Off"` at `0xb530` otherwise. Combined with the
+builder's zero comparisons, **config zero = menu On = SUB wire bit one**.
 
-`[0xe1]` does **not** ride in this u16 — it is byte 6 bit 0. High bits 12/13/14 carry
-`config[0xce]`, `[0xb6]`, `[0x115]`, matching the DSP mask's "bits 9-15 are not segments".
+| Menu label | Config byte | SUB frame byte | Bit |
+|---|---|---|---|
+| Ka 1 | `[0xe0]` | 4 | 0 |
+| Ka 2 | `[0xe1]` | 6 | 0 |
+| Ka 3 | `[0xe2]` | 5 | 6 |
+| Ka 4 | `[0xe3]` | 5 | 5 |
+| Ka 5 | `[0xe4]` | 5 | 4 |
+| Ka 6 | `[0xe5]` | 5 | 3 |
+| Ka 7 | `[0xe6]` | 5 | 2 |
+| Ka 8 | `[0xe7]` | 5 | 1 |
+| Ka 9 | `[0xe8]` | 5 | 0 |
 
-> Ordering caveat: `[0xe0]` maps to the **top** segment bit and `[0xe8]` to the bottom, i.e. reversed
-> relative to offset order. Which menu label ("Ka 1" … "Ka 9") sits at which config offset is **not
-> yet confirmed**, so do not assume `[0xe0]` is "Ka 1".
+`tools/rseries_iplink.py` now uses this polarity in `config_from_ka` and `decode_config`; the previous
+helpers inverted On/Off even though their raw `build_config` bit positions were correct. Its
+legacy result key `ka_segments_swept` denotes menu settings that are On. This does not prove
+which DSP mask bit receives each setting or that a physical RF sweep occurred. See
+[the REA findings](REA_FINDINGS.md) for the analysis evidence.
 
-Byte 2-3 is built from `config[0x118]` (3-bit, bits 3-5), `[0x01]`, `[0x03]`, `[0x04]`, `[0x07]`,
-`[0x08]`, `[0xcf]`, `[0xf5]`, `[0xf6]`, plus two constant-set bits (`adds r0,#0xc`).
+For zero-valued non-Ka config fields, all Ka Off produces `D2 AB 00 0E 40 00 06 31`, all Ka On
+produces `D2 AB 00 0E 41 7F 07 4E`, and only Ka 1/3/5 On produces `D2 AB 00 0E 41 50 06 60`.
+These are constructed frame fixtures, not captured hardware traffic.
 
-A second, non-inverting packer at `0x1e2e0` serialises `config[0xdf]`, `[0xe5..0xea]` into a bit-packed
-buffer — the NVM/EEPROM save path of §1.8, not a link message. Note it reaches `[0xe9]`/`[0xea]`, so
+A second, non-inverting packer at `0x1e23c` serialises `config[0xdf]`, `[0xe5..0xea]` into a bit-packed
+buffer — a candidate persistent-settings serialization path, distinct from both UART messages.
+Its final storage destination is not established here. Note it reaches `[0xe9]`/`[0xea]`, so
 the band group extends past `0xe8`.
+
+`0x1e2e0` in older notes is inside this function, in the second halfword of an instruction;
+it is not a function entry.
 
 ---
 
@@ -430,8 +456,8 @@ the parser at `0x2f78`–`0x2fa8` (base literal `0xdbcc`, stride ×12, `strncmp`
 | TU | `0x2bb9` | program tuner (§2.4) |
 | BSEL | `0x2029` | **band select / mux** (§2.3) |
 | TOL | `0x2149` | — |
-| BW | `0x21c9` | bandwidth |
-| B | `0x2b2d` | — |
+| BW | `0x2b2d` | bandwidth (table pointer corrected) |
+| B | `0x21c9` | — (table pointer corrected) |
 | FFT | `0x22c1` | — |
 | S / SS / SX | `0x2801` / `0x281d` / `0x2971` | sweep params (→ shared `0x288c`) |
 | SK / SKAL / SKAH | `0x2839` / `0x2871` / `0x2855` | Ka sweep ref / low / high bounds |
@@ -546,10 +572,13 @@ Distinct from the text console of §2.1, but **on the same UART**. Full write-up
 
 Frame = `<opcode|0x80>` + a fixed-length payload of **uppercase ASCII-hex** characters. Bit 7 marks
 a frame start and resynchronises the receiver (`0xd68c`); since hex payload is 7-bit, payload can
-never be mistaken for a header. 2 chars per u8, 4 per u16, **big-endian**. Final 2 payload chars are
+never be mistaken for a header. 2 chars per u8, 4 per u16, **low byte first** (each byte uses
+normal high-nibble-first hex). For opcodes `0x0f`, `0x10`, and `0x11`, final 2 payload chars are
 a checksum: `(opcode|0x80) XOR each preceding payload char` — XOR over the **ASCII characters**, seeded
 with the wire byte so the opcode is covered (`0xc644`). Hex parse `0xdb76` accepts `0-9A-F` only;
-lowercase yields `0xff` and rejects the frame.
+lowercase produces an invalid-nibble sentinel and the byte decoder returns `-1`. The two-character
+short commands `0x32`/`0x33`/`0x70` have no separate XOR comparison in `0xc780`; their byte semantics
+remain to be traced. Configuration fields are applied sequentially, not transactionally.
 
 **Opcode/length table @ `0xf498`** (6 × 8 B, `{u32 opcode, u32 payload_len}`):
 
@@ -578,12 +607,17 @@ independently reproducing the table's declared length.
   overwrites each record's flash `enable_default` with `(mask >> N) & 1` (`tbb` at `0x5522`), so the
   **runtime mask overrides the image defaults**. Bits 9-15 are not segments; bits 14/15 gate other
   sweep modes. Field 12 is **only parsed if `band_bits` bit0 or bit2 is set**.
-- **`band_bits` (field 11)** — bit0+bit2 gate the Ka-segment path; bits 1/3/4/5 are sweep-builder
-  args; bits 6/7 and 9|10 select special sweep groups. Bit→band-name assignment is **not resolved**.
-- **Path selection**: `band_bits` bit0 **and** bit2 → `FUN_0x53c0` copies the **36-record** group from flash
-  `0xecdc` into working buffer `0x20000944` and applies the mask; else `FUN_0x5788` (9-group path,
-  no segment masking). Both are called from master reconfigurator `FUN_0x8908` (sole caller
-  `0xcc06`), which takes 11 args — the mask is stack arg at callee `[sp,#0x44]`.
+- **`band_bits` (field 11)** — the UI builder is `ui_nu 0xd61c`; field sources are now traced
+  to config offsets. DSP bit1 selects narrow Ka windows, bit3 wide K and bit4 narrow K (bit4
+  has priority). These describe the selected coefficient tables; see the full field map and
+  remaining semantic qualifications in [DSP_PROTOCOL.md](DSP_PROTOCOL.md).
+- **Path selection**: bit0 **and** bit2 → `FUN_0x53c0` copies the **36-record** combined group
+  from `0xecdc` into `0x20000944` and applies the mask. Otherwise `FUN_0x5788` chooses among
+  nine groups and also applies the mask when bit0 is set. In that builder, bit1 chooses a
+  narrow Ka group before bit0 can choose the 28-record segmented group. Thus Ka segment
+  records are masked when **bit0 && (bit2 || !bit1)**; the previous "both bits required" rule
+  was incorrect. Counts include two delimiters per group. Master `FUN_0x8908` takes 11 args;
+  the mask is its tenth arg, at caller stack `+0x14` / callee stack `+0x44` after the prologue.
 
 ---
 
@@ -776,23 +810,25 @@ All three R7 code MCUs are **Nuvoton NuMicro Cortex-M4F**, load base flash `0x0`
 
 ---
 
-## 9. Inter-MCU IPC (ui_nu ↔ gps_nu ↔ dsp_nu)  ·  confidence: high (transport) / medium (some fields)
+## 9. Inter-MCU IPC  ·  confidence: high (static endpoint code)
 
-The three MCUs are separate chips linked by **UARTs carrying a binary framed protocol** (frames begin
-with a `0xd2` sync byte). Verified peripheral bases:
+The UI emits two distinct protocols. Matching peripheral addresses on separate MCUs do not,
+by themselves, establish a connection. The UI→DSP producer is now traced explicitly:
 
-| Link | ui_nu side | peer side | notes |
+| Link | ui_nu side | peer side | Evidence |
 |---|---|---|---|
-| ui_nu ↔ **gps_nu** (SUB) | `0x40074000` | `0x40070000` | menu settings out, GPS fix + matched-alert in |
-| ui_nu ↔ **dsp_nu** (DSP) | `0x40073000` | `0x40073000` | DSP also runs an ASCII-hex console/framer here (IRQ107, ring buf `0x20000040`) |
-| gps_nu ↔ **GPS chip** | — | `0x40071000` | NMEA in; `$PMTK`/`$PGKC` config out (MediaTek/Airoha-class GPS) |
+| ui_nu ↔ **gps_nu** (SUB) | `0x40074000` | `0x40070000` | Binary `0xd2` messages; §1.13 |
+| ui_nu → **dsp_nu** | **`0x40075000` (UART5)** | `0x40073000` (UART3) | UI `0xd61c`→`0xd5d0`→`0x1b67c`; matching DSP `0xc780` field parser |
+| ui_nu UART3 | `0x40073000` | Unknown | IRQ `0x10cc` reads `0x40` and writes `0x41`; not the opcode `0x10` producer |
+| gps_nu ↔ GPS chip | — | `0x40071000` | NMEA input and `$PMTK`/`$PGKC` configuration |
 
-This is the glue that carries the user's band/segment/filter **menu settings** out to where they take
-effect and brings the **GPS fix + pre-matched camera alert** back for `ui_nu` to render. It is a
-**runtime wire protocol, not stored data** — you don't edit it; it's documented so the settings→RF and
-GPS→alert paths aren't a black box. `tools/rseries_iplink.py` decodes the ui_nu↔gps_nu frames off-device
-(`selftest` / `decode-config` / `decode-fix`); the DSP ASCII-hex console is the same family as the
-serial commands in §2.1. **Editability: not-editable** (transport/logic; a code-patch at most).
+The UI sends DSP settings directly as uppercase ASCII hex. No GPS relay is required by the
+recovered code. `tools/rseries_iplink.py` models the separate SUB binary frames;
+`tools/rseries_ipc.py` models DSP ASCII-hex frames. The UI call chain plus the matching DSP parser
+establish a static logical route; physical PCB wiring and access from the external USB bridge
+remain unmeasured. These are runtime messages, not stored firmware data.
+
+See [REA_FINDINGS.md](REA_FINDINGS.md) for exact Evidence IDs, artifact identity, and limitations.
 
 ---
 
@@ -800,16 +836,17 @@ serial commands in §2.1. **Editability: not-editable** (transport/logic; a code
 
 - **High confidence:** container framing, integrity-absence, ui_nu `.data`/`.bss` split, config-struct
   base & field enumeration, menu dispatcher, font family, graphics catalog, string zone, dsp console
-  table & sweep-record format, GPS-DB schema (except f2), MCU family, ST* encoding/base, **the DSP
+  table & sweep-record format, GPS-DB schema (see §5.2 for f2), MCU family, ST* encoding/base, **the DSP
   serial frame protocol and the opcode `0x10` field map (§2.7/§2.8), and the ui_nu→gps_nu link
   message that carries the band settings (§1.13)**.
-- **Medium / unknown:** GPS-DB `f2` semantic; dsp_nu K-band coefficient block structure; which
-  marketing band name each `band_bits` bit denotes; which menu label ("Ka 1"…"Ka 9") sits at each
-  `config[0xe0..0xe8]` offset; how the sub-MCU re-frames the band settings on to the DSP (gps_nu has
-  no ASCII-hex encoder, so it is not a straight bridge); the ST* trailer model-byte *interpretation*
-  — see §0.2.
+- **Resolved in the REA pass:** Ka1–Ka9 config offsets and On/Off polarity; direct UI→DSP
+  builder/UART; low-byte-first ASCII u16 fields; the standard builder's Ka-mask path.
+- **Medium / unknown:** remaining DSP field semantics, actual persistent-settings storage path,
+  K-band coefficient structure beyond the documented record format, and ST* trailer model-byte
+  interpretation (§0.2). Ghidra output still has inferred signatures and incomplete indirect-call coverage.
 - **The one hardware question:** whether the DSP UART reaches the external CP210x port. §2.7 shows
   the text console and the frame protocol share that single UART, so this now decides **both** at
   once. Not answerable from the image — it needs a probe on real hardware.
 - **Not present in this image:** any factory-default settings table (defaults are in EEPROM /
-  `FUN_0x1d29c` immediates); any in-file checksum; the voice-DB internal format.
+  `FUN_0x1d29c` immediates). The R7 voice-DB format is described in §4; the sibling STSD format
+  remains unresolved. The external LDROM bootloader is not included in these three application images.

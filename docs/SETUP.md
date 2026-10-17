@@ -20,8 +20,8 @@ completed offline checks and current decoding limits.
 
 ## R7 editing requirements
 
-1. **Python 3.9+**.
-2. **Pillow** (graphics/scan tools only):
+1. **Python 3.9+** for standard-library tools; **Python 3.10+** for graphics/scan tools.
+2. **Pillow 12.3.0+** (graphics/scan tools only, including current image-parser security fixes):
    ```sh
    python3 -m pip install -r requirements.txt
    ```

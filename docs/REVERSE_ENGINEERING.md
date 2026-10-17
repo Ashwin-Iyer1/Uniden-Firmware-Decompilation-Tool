@@ -13,12 +13,37 @@ controller payloads are opaque; importing them as decoded ARM code will not
 make the R7 disassembly workflow applicable. The extracted ESP32-C3 segments
 are already readable machine code and retain their real load addresses.
 
+## Reproducible full-image export
+
+The [REA/Ghidra continuation report](REA_FINDINGS.md) records the current findings, exact
+Evidence IDs, setup, coverage, and limitations. The three R7 application images now have
+persistent projects and exports of all 1,654 discovered functions.
+
+```sh
+# GHIDRA_INSTALL_DIR must point to an installed Ghidra; JAVA_HOME to its compatible JDK.
+python3 tools/r7_decompile.py --output-dir decoded/ghidra-complete
+# Preserve a saved project's analysis/annotations and generate a new export snapshot:
+python3 tools/r7_decompile.py --output-dir decoded/ghidra-complete --reexport
+```
+
+The runner verifies the v153.150.127 decoded-image hashes, reconstructs startup SRAM,
+seeds real vectors and verified indirect dispatch tables, and exports every discovered
+function to C-like pseudocode and assembly. Manifests report failures, timeouts, actual
+flash hashes, memory mappings, and unclassified ranges. Unclassified bytes can be data or
+padding; successful decompilation is not proof of complete source recovery. Derived files
+stay under ignored `decoded/`.
+
+For focused REA MCP queries, `r7_analysis_elf.py` supplies a verified byte-preserving ELF
+wrapper with Thumb entry/seed metadata. `r7_rea_session.py` can launch a fresh stdio MCP
+connection when the host connection predates a Ghidra environment change. Both are
+analysis utilities; they do not produce flashable firmware.
+
 ## Tooling used
 
 - **Python + capstone** for quick Thumb-2 disassembly (`pip install capstone`).
 - **Ghidra** for full decompilation. Import `decoded/*.bin` as **`ARM:LE:32:Cortex:default`**,
   image base `0x0`, then seed the reset handler and auto-analyze.
-- **Pillow** to render candidate bitmaps and *see* what's stored.
+- **Pillow 12.3.0+** (Python 3.10+) to render candidate bitmaps and *see* what's stored.
 
 ## Step 0 — decode the sections
 

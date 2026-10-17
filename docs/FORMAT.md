@@ -47,15 +47,15 @@ Because it is bijective, `encode(decode(x)) == x` exactly — see `rseries_unpac
 
 | Section | Key |
 |---|---|
-| R7 sound (`sound_dbnu`) / sound version footer | 225 |
+| R7 sound_dbnu (ISD3800; corrected from legacy 255) | 225 |
 | GPS DB — US (`LRDB`) / NZ (`DFDB`) / IL (`IRDB`) | 210 / 194 / 226 |
 | **ui_nu** (Main) | **182** |
 | **dsp_nu** (DSP) | **184** |
 | **gps_nu** (Sub) | **183** |
 
-The GPS keys are from the upstream tool; sound key 225 is documented in
-[SOUND.md](SOUND.md). The three **R7 code-section keys were recovered here**
-by maximizing ARM Thumb-2 disassembly validity.
+The GPS keys are from the upstream tool; the three **code-section keys were recovered here**
+by maximizing ARM Thumb-2 disassembly validity. The R7 sound key was independently corrected
+using the ISD3800 image structure; see [SOUND.md](SOUND.md).
 
 ## 2. Container layout
 
@@ -72,7 +72,7 @@ python3 tools/rseries_unpack.py parse <fw.bin>
 | sound_dbnu (DRSWSDB) | 0x055a33 | ~2 MB | voice / alert audio | 225 |
 | GPSD:LRDB | 0x255a46 | ~204 KB | camera database | 210 |
 | STUI / STDS / STGP / STSD | 0x288a65+ | — | R8/R4 STM32 images (unused by R7) | — |
-| NMGF | 0x4e26a4 | — | footer / merge marker | plain |
+| NMGF | 0x4e26ab | 12 B | footer / merge marker | plain |
 
 Header: `u32 first` where `first & 0xFFFFFF` = ui_nu length (rounded up to 512), `(first>>24)&1` =
 "sound present"; then `u32 dsp_nu_len`, `u32 gps_nu_len`; a 12-byte `SNDD` record holds the sound

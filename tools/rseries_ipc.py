@@ -14,11 +14,13 @@ Wire format (proven from dsp_nu; see docs/DSP_PROTOCOL.md):
 
     - the high bit marks the first byte of a frame, so any byte with bit7 set
       resynchronises the receiver
-    - the payload is ASCII hex: 2 chars per u8, 4 chars per u16 (big-endian)
-    - the final 2 payload chars are a checksum:
+    - the payload is ASCII hex: 2 chars per byte, low byte first for u16
+    - for opcodes 0x0f/0x10/0x11, the final 2 payload chars are a checksum:
           csum = (opcode | 0x80) XOR every preceding payload char
       (XOR is over the ASCII characters, not the decoded bytes)
     - total payload length is fixed per opcode, from the table at dsp_nu 0xf498
+    - short opcodes 0x32/0x33/0x70 parse their two chars without a separate
+      checksum gate; this codec's XOR result for them is a host convention
 
 Usage:
     python3 rseries_ipc.py opcodes
@@ -42,28 +44,30 @@ OPCODES = {
 # Field layout of opcode 0x10, in parse order (dsp_nu 0xc894..0xcc0e).
 # 4 + 2*9 + 4 + 4 = 30 data chars + 2 checksum = 32, matching the opcode table.
 CONFIG_FIELDS = [
-    ("f1_u16",      2, "u16, first field"),
-    ("f2",          1, "u8"),
-    ("f3",          1, "u8"),
-    ("f4",          1, "u8"),
-    ("f5",          1, "u8"),
-    ("f6",          1, "u8"),
-    ("f7",          1, "u8"),
-    ("f8_nibbles",  1, "u8, split into high/low nibble by the DSP"),
-    ("f9",          1, "u8"),
-    ("f10",         1, "u8"),
+    ("f1_u16",      2, "u16; UI encodes cfg[0x0f,0x0d,0xb1]"),
+    ("f2",          1, "u8; UI cfg[0xdd]"),
+    ("f3",          1, "u8; UI cfg[0xde]"),
+    ("f4",          1, "u8; UI cfg[0xdf]"),
+    ("f5",          1, "u8; UI cfg[0x112]"),
+    ("f6",          1, "u8; UI cfg[0x113]"),
+    ("f7",          1, "u8; UI cfg[0x114]"),
+    ("f8_nibbles",  1, "u8; UI cfg[0xc9]/state, split high/low nibble by DSP"),
+    ("f9",          1, "u8; UI cfg[0x06,0x07,0x08]/builder argument"),
+    ("f10",         1, "u8; UI cfg[0xcb,0xcc]"),
     ("band_bits",   2, "u16 band bitfield"),
-    ("ka_mask",     2, "u16 Ka-segment mask (read if band_bits bit0 or bit2; applied only if both)"),
+    ("ka_mask",     2, "u16 Ka-segment mask (read if bit0 or bit2; see sweep-path status)"),
 ]
 
-# band_bits bit -> role observed in the DSP (bands are gated by combinations of
-# these; the mapping from bit to marketing band name is not yet pinned down)
+# band_bits bit -> role observed in dsp_nu 0xcaf6..0xcc06, 0x8908,
+# 0x53c0 and 0x5788. Frequency labels follow the selected coefficient records;
+# UI 0xd61c supplies the config-byte map in docs/DSP_PROTOCOL.md; frequency
+# descriptions alone do not establish every marketing/menu label.
 BAND_BITS = {
-    0:  "gates the Ka-segment path (with bit2); passed to the sweep builder",
-    1:  "sweep-builder arg",
-    2:  "gates the Ka-segment path (with bit0)",
-    3:  "sweep-builder arg",
-    4:  "sweep-builder arg",
+    0:  "selects nine Ka segments (bit1 takes priority unless bit2 is set)",
+    1:  "selects three narrow Ka windows in the nine-group builder",
+    2:  "with bit0, selects the combined K/Ka segment table",
+    3:  "selects wide K table (23.899250-24.251002 GHz), unless bit4 is set",
+    4:  "selects narrow K table (24.079998-24.200002 GHz)",
     5:  "sweep-builder arg; also drives two extra config calls",
     6:  "selects special sweep group",
     7:  "selects special sweep group",
@@ -72,8 +76,26 @@ BAND_BITS = {
 }
 
 # ka_mask bit N (N=0..8) -> DSP sweep-record mode id 0x10+N.
-# The DSP overrides each record's flash enable_default with (mask >> N) & 1.
+# Both sweep builders override segment enable_default with (mask >> N) & 1.
 KA_SEGMENT_BITS = 9
+
+def ka_mask_status(bands):
+    """Static sweep selection; does not assert UART reachability or RF activity.
+
+    0xcba2 reads the mask for bit0 OR bit2. 0x8998 selects the 36-record
+    builder for bit0 AND bit2. Otherwise 0x5788 prefers bit1's 16-record
+    narrow table over bit0's 28-record segment table; 0x5938 gates masking
+    on bit0. Counts include the two group delimiters.
+    """
+    if bands & 1 and bands & 4:
+        return True, True, "36-record combined K/Ka segment table"
+    if bands & 1 and not bands & 2:
+        return True, True, "28-record Ka segment table"
+    if bands & 1:
+        return True, False, "bit1 selects a 16-record narrow Ka table with no segment records"
+    if bands & 4:
+        return True, False, "bit0 is clear; no Ka segment masking"
+    return False, False, "bit0 and bit2 are clear; mask is not parsed"
 
 def checksum(opcode, payload_wo_csum):
     """(opcode|0x80) XOR every payload ASCII char before the checksum."""
@@ -83,17 +105,20 @@ def checksum(opcode, payload_wo_csum):
     return c & 0xff
 
 def build(opcode, values):
-    """values: list of (width_in_bytes, integer). Returns the full frame as bytes."""
+    """Encode (width_in_bytes, integer) values as low-byte-first ASCII pairs."""
     if opcode not in OPCODES:
         raise SystemExit(f"unknown opcode {opcode:#x}")
     length, _ = OPCODES[opcode]
-    body = "".join("%0*X" % (w * 2, v & ((1 << (w * 8)) - 1)) for w, v in values)
+    # ui_nu 0xd61c emits low byte before high byte through 0xdbf0;
+    # dsp_nu 0xcea4 decodes those pairs into adjacent little-endian bytes.
+    body = "".join((v & ((1 << (w * 8)) - 1)).to_bytes(w, "little").hex().upper()
+                   for w, v in values)
     if len(body) != length - 2:
         raise SystemExit(f"opcode {opcode:#x} needs {length-2} data chars, got {len(body)}")
     return bytes([opcode | 0x80]) + (body + "%02X" % checksum(opcode, body)).encode()
 
 def parse_frame(raw):
-    """raw: bytes of a whole frame. Returns (opcode, payload_str, csum_ok)."""
+    """Return (opcode, payload_str, XOR_ok); short-op XOR is not an acceptance gate."""
     if not raw:
         raise SystemExit("empty frame")
     first = raw[0]
@@ -103,11 +128,15 @@ def parse_frame(raw):
     if opcode not in OPCODES:
         raise SystemExit(f"opcode {opcode:#x} is not in the DSP's table")
     length, _ = OPCODES[opcode]
-    payload = raw[1:].decode("ascii", "replace")
+    # dsp_nu 0xdb76 accepts only '0'..'9' and 'A'..'F'; the checksum
+    # itself is decoded through that same routine. Never normalize wire data.
+    if any(ch not in b"0123456789ABCDEF" for ch in raw[1:]):
+        raise SystemExit("DSP payload must contain uppercase ASCII hex only (0-9, A-F)")
+    payload = raw[1:].decode("ascii")
     if len(payload) != length:
         raise SystemExit(f"opcode {opcode:#x} expects {length} payload chars, got {len(payload)}")
     body, got = payload[:-2], payload[-2:]
-    ok = ("%02X" % checksum(opcode, body)) == got.upper()
+    ok = ("%02X" % checksum(opcode, body)) == got
     return opcode, payload, ok
 
 def split_fields(payload, fields):
@@ -115,7 +144,7 @@ def split_fields(payload, fields):
     for name, width, desc in fields:
         n = width * 2
         chunk = payload[i:i + n]
-        out.append((name, chunk, int(chunk, 16), desc))
+        out.append((name, chunk, int.from_bytes(bytes.fromhex(chunk), "little"), desc))
         i += n
     return out
 
@@ -135,7 +164,8 @@ def cmd_opcodes():
     print("  opcode  wire  payload chars  meaning")
     for op, (ln, desc) in sorted(OPCODES.items()):
         print(f"  {op:#04x}    {op|0x80:#04x}  {ln:>13}  {desc}")
-    print("\nFrame = <wire byte> + payload; last 2 payload chars are the checksum.")
+    print("\nFrame = <wire byte> + payload; opcodes 0x0f/0x10/0x11 end with a checksum.")
+    print("Short opcodes parse two hex characters without a separate checksum gate.")
 
 def cmd_decode(arg):
     txt = arg.replace(" ", "").replace("\t", "")
@@ -147,6 +177,8 @@ def cmd_decode(arg):
     print(f"opcode      {opcode:#04x} (wire {opcode|0x80:#04x}) — {desc}")
     print(f"payload     {payload}  ({len(payload)} chars)")
     print(f"checksum    {payload[-2:]}  {'OK' if ok else 'BAD — expected %02X' % checksum(opcode, payload[:-2])}")
+    if opcode in (0x32, 0x33, 0x70):
+        print("            (host XOR convention; DSP dispatch has no separate checksum gate)")
     if opcode != 0x10:
         return
     print("\nfields:")
@@ -158,12 +190,12 @@ def cmd_decode(arg):
     for bit, role in sorted(BAND_BITS.items()):
         if bands >> bit & 1:
             print(f"  bit{bit:<2} set — {role}")
-    segmented = bool(bands & 1) and bool(bands >> 2 & 1)
-    print(f"\nKa-segment path: {'ACTIVE (bit0 and bit2 set)' if segmented else 'inactive'}")
-    print(f"ka_mask {mask:#06x} — segments enabled: {ka_list(mask) or 'none'}")
+    _, applied, reason = ka_mask_status(bands)
+    print(f"\nKa mask: {'applied to segment records' if applied else 'not applied'} — {reason}")
+    print(f"ka_mask {mask:#06x} — requested segments: {ka_list(mask) or 'none'}")
     high = mask >> 9
     if high:
-        print(f"  (bits 9-15 = {high:#x}: not Ka segments; bits 14/15 gate other sweep modes)")
+        print(f"  (bits 9-15 = {high:#x}: not Ka segments; bits 14/15 gate combined-table K sweeps)")
 
 def cmd_config(argv):
     segs, bands, extra = None, None, {}
@@ -186,12 +218,12 @@ def cmd_config(argv):
     if segs is None:
         raise SystemExit("--ka is required (e.g. --ka 1,3,5, or --ka '' for none)")
     mask = ka_mask_from(segs)
-    # bit0|bit2 must be set for the DSP to read the Ka-segment field at all
+    # Preserve the historical default: both bits select the combined table.
     if bands is None:
         bands = 0x0005
-    if not (bands & 1 and bands >> 2 & 1):
-        print("warning: band_bits bit0 and bit2 are not both set — the DSP will not take the\n"
-              "         segmented sweep path, so the Ka mask will be ignored.", file=sys.stderr)
+    _, applied, reason = ka_mask_status(bands)
+    if not applied:
+        print(f"warning: Ka mask is not applied — {reason}.", file=sys.stderr)
     vals = []
     for name, width, _ in CONFIG_FIELDS:
         if name == "band_bits":
@@ -202,7 +234,7 @@ def cmd_config(argv):
             v = extra.get(name, 0)
         vals.append((width, v))
     frame = build(0x10, vals)
-    print(f"Ka segments enabled : {segs or 'none'}  (mask {mask:#06x})")
+    print(f"Ka segments requested: {segs or 'none'}  (mask {mask:#06x})")
     print(f"band_bits           : {bands:#06x}")
     print(f"frame ({len(frame)} bytes)     : {frame.hex().upper()}")
     print(f"  wire byte         : {frame[0]:#04x}")
