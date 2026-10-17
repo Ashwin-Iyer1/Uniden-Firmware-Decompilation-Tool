@@ -5,12 +5,19 @@
 *.bin
 *.zip
 
+# Downloaded R7/R8 manuals kept in the repository root
+/R7*.pdf
+/R8*.pdf
+
 # Extracted / generated assets (derived from copyrighted firmware)
 decoded/
 scan_pull/
 anim/
 *.png
 *.gif
+*.wav
+*.adpcm
+manifest.json
 # keep clean, hand-authored templates under examples/, ignore all other CSVs
 *.csv
 !examples/*.csv
