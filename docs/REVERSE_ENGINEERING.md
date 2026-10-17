@@ -14,7 +14,7 @@ For the host-side database selection and instruction-checked transfer path, see
 - **Ghidra** for full decompilation. Import decoded R7 code as **`ARM:LE:32:Cortex`**
   with compiler specification **`default`**,
   image base `0x0`, then seed the reset handler and auto-analyze.
-- **Pillow** to render candidate bitmaps and *see* what's stored.
+- **Pillow 12.3.0+** (Python 3.10+) to render candidate bitmaps and *see* what's stored.
 
 ## Step 0 — decode the sections
 

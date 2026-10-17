@@ -96,6 +96,8 @@ Supply your own matching updater executable and AEUS database. The checker
 ships no vendor binary, record fixture or pseudocode. It requires the exact
 updater hash before using its addresses; its supported fixture size is capped
 to keep the emulator's data and modeled-service regions separate.
+The output report must be a new file. Exclusive creation refuses existing files,
+including symlinks and hard links to the supplied artifacts.
 
 ```sh
 python3 -m venv /tmp/r8-updater-checks

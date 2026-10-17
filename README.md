@@ -59,8 +59,8 @@ Raw byte/patch edits of any section are possible via `r7_patch.py patch`.
 
 ## Requirements
 
-- **Python 3.9+**
-- **Pillow** (only for the graphics/scan tools): `pip install -r requirements.txt`
+- **Python 3.9+** for the standard-library tools; **Python 3.10+** for graphics/scan tools
+- **Pillow 12.3.0+** (only for the graphics/scan tools): `pip install -r requirements.txt`
 - A **micro-USB data cable** and the **Silicon Labs CP210x VCP driver** to talk to the detector
   ([Silicon Labs downloads](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers)).
 - Optional, only if you want to re-run the reverse engineering: **Ghidra** + **capstone**

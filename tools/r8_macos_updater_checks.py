@@ -140,6 +140,13 @@ def negotiate(uc, model, response, slot_types, lengths, offsets):
         for address,data in old:uc.mem_write(address,data)
     return result
 
+def write_report(output, report):
+    """Create a new report without replacing files or following output aliases."""
+    text = json.dumps(report, indent=2) + '\n'
+    with Path(output).open('x', encoding='utf-8') as handle:
+        handle.write(text)
+
+
 def main():
     if not __debug__:
         raise SystemExit('Run without -O: these instruction checks require assertions')
@@ -216,7 +223,7 @@ def main():
       'limitations':['Objective-C runtime and property getters are modeled; selection instructions are executed.',
                      'Serial I/O, surrounding application and device behavior are outside this emulation.',
                      'No AEUS key or general encoder recovered; no physical alert verified.']}
-    a.output.write_text(json.dumps(report,indent=2)+'\n')
+    write_report(a.output, report)
     print(f'PASS: 5 synthetic decoder cases; {blocks} AEUS blocks copied unchanged with XOR verified; {len(negotiations)} negotiation cases')
 
 if __name__=='__main__':main()
